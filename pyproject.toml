@@ -39,15 +39,16 @@ dependencies = [
     # Faker output is seed-stable within a minor series but not guaranteed
     # across them. The upper pin is part of DataLoom's reproducibility
     # contract -- see docs/determinism.md.
-    "faker>=28.0,<38.0",
+    "faker==37.12.0",
     "sqlglot>=25.0,<28.0",
     "typer>=0.12,<0.20",
+    "click>=8.1,<8.3",
     "pyyaml>=6.0,<7.0",
 ]
 
 [project.optional-dependencies]
 anthropic = ["anthropic>=0.40,<1.0"]
-mcp = ["mcp>=1.2,<2.0"]
+mcp = ["mcp>=1.28,<2.0"]
 parquet = ["pyarrow>=16.0"]
 postgres = ["psycopg[binary]>=3.1,<4.0"]
 # Everything a user needs for the documented quickstart.
