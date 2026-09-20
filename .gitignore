@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Environments
+.venv/
+venv/
+.env
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# DataLoom local state
+# Genome artifacts are meant to be committed, so they are NOT ignored here.
+# These are run-local outputs and caches.
+.dataloom/coverage.db
+out/
+*.parquet
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+*.swp

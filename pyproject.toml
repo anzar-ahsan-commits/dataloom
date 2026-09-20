@@ -1,0 +1,155 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "dataloom"
+version = "0.1.0.dev0"
+description = "Schema-aware synthetic test data generation with an MCP-native interface."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "Anzar Ahsan", email = "anzar.ahsan.us@gmail.com" }]
+keywords = [
+    "synthetic-data",
+    "test-data",
+    "mcp",
+    "model-context-protocol",
+    "sqlalchemy",
+    "data-engineering",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Database",
+    "Topic :: Software Development :: Testing",
+    "Typing :: Typed",
+]
+
+# Core runtime. Kept deliberately small; anything that pulls heavy binary
+# wheels or vendor SDKs lives in an optional extra below.
+dependencies = [
+    "sqlalchemy>=2.0,<3.0",
+    "pydantic>=2.7,<3.0",
+    # Faker output is seed-stable within a minor series but not guaranteed
+    # across them. The upper pin is part of DataLoom's reproducibility
+    # contract -- see docs/determinism.md.
+    "faker>=28.0,<38.0",
+    "sqlglot>=25.0,<28.0",
+    "typer>=0.12,<0.20",
+    "pyyaml>=6.0,<7.0",
+]
+
+[project.optional-dependencies]
+anthropic = ["anthropic>=0.40,<1.0"]
+mcp = ["mcp>=1.2,<2.0"]
+parquet = ["pyarrow>=16.0"]
+postgres = ["psycopg[binary]>=3.1,<4.0"]
+# Everything a user needs for the documented quickstart.
+all = [
+    "dataloom[anthropic,mcp,parquet,postgres]",
+]
+dev = [
+    "dataloom[all]",
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.6,<0.15",
+    "mypy>=1.11",
+    "types-pyyaml",
+]
+
+[project.urls]
+Homepage = "https://github.com/anzarahsan/dataloom"
+Repository = "https://github.com/anzarahsan/dataloom"
+Issues = "https://github.com/anzarahsan/dataloom/issues"
+
+[project.scripts]
+dataloom = "dataloom.cli.app:main"
+
+# Third-party domain packs register here. See CONTRIBUTING.md.
+[project.entry-points."dataloom.domain_packs"]
+healthcare = "dataloom.domains.healthcare:PACK"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dataloom"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/tests", "/examples", "/README.md", "/LICENSE"]
+
+# ---------------------------------------------------------------------------
+# Tooling
+# ---------------------------------------------------------------------------
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "UP",   # pyupgrade
+    "ARG",  # unused arguments
+    "SIM",  # flake8-simplify
+    "TCH",  # type-checking imports
+    "PTH",  # prefer pathlib
+    "RUF",  # ruff-specific
+    "D",    # pydocstyle -- the brief requires docstrings on public API
+]
+ignore = [
+    "D105",  # magic method docstrings
+    "D107",  # __init__ docstring (documented on the class instead)
+    "D203",  # incompatible with D211
+    "D213",  # incompatible with D212
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D100", "D101", "D102", "D103", "D104", "ARG001", "ARG002"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src/dataloom"]
+plugins = ["pydantic.mypy"]
+warn_unreachable = true
+disallow_any_generics = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+strict = false
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"
+markers = [
+    "integration: requires an external service such as a live PostgreSQL database",
+    "needs_llm: requires a real LLM provider and API credentials",
+]
+filterwarnings = ["error"]
+
+[tool.coverage.run]
+source = ["src/dataloom"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "@overload",
+]
