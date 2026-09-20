@@ -8,6 +8,8 @@ dist/
 
 # Environments
 .venv/
+.demo-venv/
+.verify-venv/
 venv/
 .env
 
@@ -23,6 +25,9 @@ htmlcov/
 # Genome artifacts are meant to be committed, so they are NOT ignored here.
 # These are run-local outputs and caches.
 .dataloom/coverage.db
+.dataloom/coverage.sqlite
+.dataloom/demo/
+.dataloom/output/
 out/
 *.parquet
 

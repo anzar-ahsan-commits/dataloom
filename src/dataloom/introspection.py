@@ -48,10 +48,10 @@ def reflect(engine: Engine, schema: str | None = None) -> Genome:
                 columns=[
                     Column(
                         name=c["name"],
-                        sql_type=str(c["type"]),
+                        sql_type=c["type"].compile(dialect=engine.dialect),
                         nullable=c["nullable"],
                         default=c.get("default"),
-                        generated=bool(c.get("computed")),
+                        generated=bool(c.get("computed") or c.get("identity", {}).get("always")),
                     )
                     for c in inspector.get_columns(name, schema=schema)
                 ],

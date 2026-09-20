@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from typing import TYPE_CHECKING
 
@@ -41,21 +42,40 @@ def classify(
     """Classify unlabelled columns; persisted labels act as the local cache."""
     result = genome.model_copy(deep=True)
     pending = {}
+    cache_keys = {}
     allowed = set(semantic_types or ALIASES.values())
     for table in result.tables:
         for column in table.columns:
-            if column.classification and (not refresh or column.classification.source == "manual"):
+            key = f"{table.name}.{column.name}"
+            cache_keys[key] = hashlib.sha256(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "column": key,
+                        "type": column.sql_type,
+                        "pattern": column.profile.pattern if column.profile else None,
+                        "allowed": sorted(allowed),
+                    },
+                    sort_keys=True,
+                ).encode()
+            ).hexdigest()
+            if column.classification and column.classification.source == "manual":
+                continue
+            if not refresh and column.classification_cache_key == cache_keys[key]:
                 continue
             column.classification = None
+            column.classification_cache_key = None
             label = ALIASES.get(column.name.lower())
             if label and label in allowed:
                 column.classification = Classification(
                     semantic_type=label, source="name", evidence=f"Exact alias: {column.name}"
                 )
+                column.classification_cache_key = cache_keys[key]
             elif column.profile and column.profile.pattern == r"^\d{3}\-\d{2}\-\d{4}$":
                 column.classification = Classification(
                     semantic_type="ssn", source="pattern", evidence="Observed 3-2-4 digit shape"
                 )
+                column.classification_cache_key = cache_keys[key]
             else:
                 pending[f"{table.name}.{column.name}"] = column
     if provider and pending:
@@ -74,4 +94,6 @@ def classify(
             pending[key].classification = Classification(
                 semantic_type=label, source="llm", evidence="Metadata disambiguation"
             )
+        for key, column in pending.items():
+            column.classification_cache_key = cache_keys[key]
     return result

@@ -20,7 +20,7 @@ class FakeProvider:
 
 
 def test_cache_skips_second_provider_call() -> None:
-    genome = parse_ddl("CREATE TABLE people (contact TEXT)")
+    genome = parse_ddl("CREATE TABLE people (id INT PRIMARY KEY, contact TEXT)")
     provider = FakeProvider()
     first = classify(genome, provider)
     assert classify(first, provider) == first

@@ -21,8 +21,8 @@ class Rule(Model):
 
     semantic_type: str | None = None
     choices: list[Scalar] | None = Field(default=None, min_length=1)
-    minimum: float | None = None
-    maximum: float | None = None
+    minimum: float | None = Field(default=None, allow_inf_nan=False)
+    maximum: float | None = Field(default=None, allow_inf_nan=False)
     null_rate: float = Field(default=0, ge=0, le=1)
     proportion: float | None = Field(default=None, ge=0, le=1)
     value: Scalar = None
@@ -85,6 +85,7 @@ class Plan(Model):
     format_version: Literal[1] = 1
     seed: int = 42
     reference_date: date = date(2025, 1, 1)
+    use_profiles: bool = True
     entities: dict[str, EntityPlan] = Field(min_length=1)
     max_rows: int = Field(default=100000, ge=1, le=10000000)
 
@@ -99,17 +100,31 @@ class Plan(Model):
         path.write_text(self.model_dump_json(indent=2) + "\n", encoding="utf-8")
 
 
-def author_plan(request: str, genome: Genome, provider: Provider) -> Plan:
+def author_plan(
+    request: str, genome: Genome, provider: Provider, semantic_types: list[str] | None = None
+) -> Plan:
     """Ask a provider to author a plan using metadata, excluding observed values."""
     metadata = {
         table.name: {
-            "columns": [c.name for c in table.columns],
+            "columns": [
+                {
+                    "name": c.name,
+                    "sql_type": c.sql_type,
+                    "nullable": c.nullable,
+                    "semantic_type": c.classification.semantic_type if c.classification else None,
+                }
+                for c in table.columns
+            ],
             "foreign_keys": [f.model_dump() for f in table.foreign_keys],
+            "primary_key": table.primary_key,
+            "unique": table.unique,
+            "checks": table.checks,
         }
         for table in genome.tables
     }
     return provider.structured(
         f"Author a generation plan for this request: {request}\nSchema: {metadata}\n"
+        f"Available semantic generators: {semantic_types or []}\n"
         "Include all required parents. Use exact proportion rules for percentage requests.",
         Plan,
     )

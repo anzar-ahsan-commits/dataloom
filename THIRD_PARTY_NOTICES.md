@@ -7,7 +7,9 @@ terminology distributions or clinical decision support.
 - NPI algorithm: [CMS specification, January 23, 2004](https://www.cms.gov/Regulations-and-Guidance/Administrative-Simplification/NationalProvIdentStand/Downloads/NPIcheckdigit.pdf).
   Checksum-valid generated numbers are not verified provider registrations and may collide with issued numbers.
 - ICD-10-CM curated identifiers: I10, E11.9, J45.909, R51.9, Z00.00.
-  Source: [CDC ICD-10-CM](https://www.cdc.gov/nchs/icd/icd-10-cm/index.html).
+  Verified against the [CDC FY2026 code descriptions archive](https://ftp.cdc.gov/pub/Health_Statistics/NCHS/Publications/ICD10CM/2026/)
+  on September 20, 2026. This is a fixed illustrative subset, not an automatically
+  updated terminology service.
 - LOINC identifiers: [718-7](https://loinc.org/718-7) and [2345-7](https://loinc.org/2345-7).
   LOINC is copyright Regenstrief Institute, Inc. and the Logical Observation
   Identifiers Names and Codes (LOINC) Committee; available under the

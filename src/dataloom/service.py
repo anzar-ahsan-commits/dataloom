@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 from typing import TYPE_CHECKING, Literal, Self
 
 from pydantic import Field, model_validator
@@ -231,7 +232,7 @@ class Service:
             plan_path = args.plan_file
         else:
             assert args.request is not None
-            plan = author_plan(args.request, genome, self.llm())
+            plan = author_plan(args.request, genome, self.llm(), sorted(self.registry.generators))
             plan_path = args.authored_plan_file
             plan.save(self.path(plan_path))
         data, receipt = generate(genome, plan, self.registry)
@@ -246,14 +247,13 @@ class Service:
                 engine.dispose()
         else:
             directory = self.path(args.output)
-            paths = FileConnector(directory, args.format).write(genome, data, receipt)
-            plan.save(directory / "plan.json")
+            paths = FileConnector(directory, args.format, plan).write(genome, data, receipt)
         warnings = []
         try:
             CoverageStore(self.path(".dataloom/coverage.sqlite")).record(
                 genome, plan, data, receipt
             )
-        except OSError:
+        except (OSError, sqlite3.Error):
             warnings.append("Output succeeded, but coverage history could not be saved")
         return GenerateResult(paths=paths, receipt=receipt, plan_file=plan_path, warnings=warnings)
 

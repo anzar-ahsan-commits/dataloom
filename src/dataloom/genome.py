@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import tempfile
 from typing import TYPE_CHECKING, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -32,6 +33,20 @@ class Profile(Model):
     maximum: Scalar = None
     top_values: list[tuple[Scalar, int]] = Field(default_factory=list)
     pattern: str | None = None
+    quantiles: list[float] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_quantiles(self) -> Self:
+        """Require ordered finite quantiles with enough points to interpolate."""
+        import math
+
+        if self.quantiles and (
+            len(self.quantiles) < 2
+            or any(not math.isfinite(v) for v in self.quantiles)
+            or self.quantiles != sorted(self.quantiles)
+        ):
+            raise ValueError("Quantiles must contain at least two ordered finite numbers")
+        return self
 
 
 class Classification(Model):
@@ -53,6 +68,7 @@ class Column(Model):
     generated: bool = False
     profile: Profile | None = None
     classification: Classification | None = None
+    classification_cache_key: str | None = None
 
 
 class ForeignKey(Model):
@@ -120,16 +136,32 @@ class Genome(Model):
     def fingerprint(self) -> str:
         """Hash structural metadata, excluding observations and classifications."""
         structure = self.model_dump(
-            exclude={"tables": {"__all__": {"columns": {"__all__": {"profile", "classification"}}}}}
+            exclude={
+                "tables": {
+                    "__all__": {
+                        "columns": {
+                            "__all__": {"profile", "classification", "classification_cache_key"}
+                        }
+                    }
+                }
+            }
         )
         return hashlib.sha256(json.dumps(structure, sort_keys=True).encode()).hexdigest()
 
     def save(self, path: Path) -> None:
         """Atomically persist a readable JSON artifact."""
         path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_suffix(path.suffix + ".tmp")
-        temporary.write_text(self.model_dump_json(indent=2) + "\n", encoding="utf-8")
-        temporary.replace(path)
+        from pathlib import Path
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=path.parent, suffix=".tmp", delete=False
+        ) as stream:
+            temporary = Path(stream.name)
+            stream.write(self.model_dump_json(indent=2) + "\n")
+        try:
+            temporary.replace(path)
+        finally:
+            temporary.unlink(missing_ok=True)
 
     @classmethod
     def load(cls, path: Path) -> Genome:

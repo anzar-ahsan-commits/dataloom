@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 from collections import Counter
 from datetime import date, datetime
@@ -70,6 +71,11 @@ def profile(genome: Genome, engine: Engine, limit: int = 1000, top_n: int = 5) -
             for column in entity.columns:
                 values = [scalar(row[column.name]) for row in rows if row[column.name] is not None]
                 counts = Counter(values)
+                numeric = sorted(
+                    float(v)
+                    for v in values
+                    if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+                )
                 numeric_date = any(
                     t in column.sql_type.upper()
                     for t in ("INT", "NUMERIC", "DECIMAL", "REAL", "FLOAT", "DATE", "TIME")
@@ -83,5 +89,8 @@ def profile(genome: Genome, engine: Engine, limit: int = 1000, top_n: int = 5) -
                     maximum=ordered[-1] if numeric_date and ordered else None,
                     top_values=counts.most_common(top_n),
                     pattern=mine_pattern([str(v) for v in values]) if values else None,
+                    quantiles=[numeric[round(i * (len(numeric) - 1) / 10)] for i in range(11)]
+                    if numeric
+                    else [],
                 )
     return result

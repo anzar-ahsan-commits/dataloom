@@ -1,0 +1,32 @@
+format_version: 1
+seed: 42
+reference_date: '2025-01-01'
+entities:
+  patients:
+    rows: 50
+    rules:
+      email:
+        null_rate: 0.1
+  orders:
+    fanout:
+      parent: patients
+      foreign_key: [patient_id]
+      minimum: 3
+      maximum: 5
+    rules:
+      priority:
+        choices: [routine, urgent]
+  lab_results:
+    fanout:
+      parent: orders
+      foreign_key: [order_id]
+      minimum: 1
+      maximum: 2
+    rules:
+      result_value:
+        minimum: 5
+        maximum: 20
+      abnormal:
+        proportion: 0.1
+        value: true
+        otherwise: false

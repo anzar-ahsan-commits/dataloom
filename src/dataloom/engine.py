@@ -5,8 +5,10 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import platform
 import re
-from datetime import timedelta
+from datetime import date, datetime, timedelta
+from decimal import Decimal
 from importlib.metadata import version
 from random import Random
 from typing import TYPE_CHECKING
@@ -32,6 +34,7 @@ class Receipt(Model):
     """Replay provenance and observed results, without wall-clock metadata."""
 
     genome_hash: str
+    genome_artifact_hash: str
     plan_hash: str
     data_hash: str
     seed: int
@@ -80,7 +83,23 @@ def _primitive(
     high = rule.maximum if rule.maximum is not None else 1000
     if low > high:
         raise PlanError(f"Invalid effective bounds for {column.name}")
+    if (
+        column.profile
+        and column.profile.quantiles
+        and rule.minimum is None
+        and rule.maximum is None
+    ):
+        points = column.profile.quantiles
+        bucket = ctx.rng.randrange(len(points) - 1)
+        observed = ctx.rng.uniform(points[bucket], points[bucket + 1])
+        if not primary and ("INT" in kind or "SERIAL" in kind):
+            return round(observed)
+        if any(t in kind for t in ("NUMERIC", "DECIMAL", "REAL", "FLOAT", "DOUBLE")):
+            scale = re.search(r"\(\d+,\s*(\d+)\)", kind)
+            return round(observed, int(scale[1]) if scale else 2)
     if "INT" in kind or "SERIAL" in kind:
+        if math.ceil(low) > math.floor(high):
+            raise PlanError(f"No integer exists within bounds for {column.name}")
         return (
             index + 1
             if primary and rule.minimum is None and rule.maximum is None
@@ -92,9 +111,12 @@ def _primitive(
     if "BOOL" in kind:
         return bool(ctx.rng.getrandbits(1))
     if "TIMESTAMP" in kind or "DATETIME" in kind:
-        return (
+        timestamp = (
             ctx.reference_date - timedelta(days=ctx.rng.randrange(3650))
         ).isoformat() + "T12:00:00"
+        return (
+            timestamp + "+00:00" if "WITH TIME ZONE" in kind or kind == "TIMESTAMPTZ" else timestamp
+        )
     if kind == "DATE":
         return (ctx.reference_date - timedelta(days=ctx.rng.randrange(3650))).isoformat()
     if kind == "UUID":
@@ -102,7 +124,7 @@ def _primitive(
     if any(t in kind for t in ("CHAR", "TEXT")):
         length = re.search(r"\((\d+)\)", kind)
         limit = int(length[1]) if length else 40
-        value = f"synthetic-{index + 1}" if primary else f"test-{ctx.rng.getrandbits(64):016x}"
+        value = str(index + 1) if primary else f"test-{ctx.rng.getrandbits(64):016x}"
         return value[:limit]
     raise PlanError(
         f"Unsupported SQL type {column.sql_type} for {column.name}; add an explicit rule"
@@ -121,19 +143,48 @@ def _valid_row(table: Table, row: Row, checks: list[Expression]) -> bool:
             not isinstance(value, int) or isinstance(value, bool)
         ):
             return False
+        if "INT" in kind or "SERIAL" in kind:
+            bits = 16 if "SMALL" in kind else 64 if "BIG" in kind else 32
+            if not isinstance(value, int) or not -(2 ** (bits - 1)) <= value < 2 ** (bits - 1):
+                return False
         if any(t in kind for t in ("NUMERIC", "DECIMAL", "REAL", "FLOAT", "DOUBLE")) and (
-            not isinstance(value, (int, float)) or not math.isfinite(value)
+            not isinstance(value, (int, float))
+            or isinstance(value, bool)
+            or not math.isfinite(value)
         ):
             return False
         if "BOOL" in kind and not isinstance(value, bool):
             return False
+        precision = re.search(r"(?:NUMERIC|DECIMAL)\((\d+),\s*(\d+)\)", kind)
+        if precision:
+            digits, scale = int(precision[1]), int(precision[2])
+            number = Decimal(str(value))
+            if abs(number) >= Decimal(10) ** (digits - scale):
+                return False
+            if number != number.quantize(Decimal(10) ** -scale):
+                return False
+        if kind == "DATE" or "TIMESTAMP" in kind or kind == "DATETIME" or kind == "UUID":
+            if not isinstance(value, str):
+                return False
+            try:
+                if kind == "DATE":
+                    date.fromisoformat(value)
+                elif kind == "UUID":
+                    UUID(value)
+                else:
+                    datetime.fromisoformat(value)
+            except ValueError:
+                return False
         if any(t in kind for t in ("CHAR", "TEXT")):
             if not isinstance(value, str):
                 return False
             length = re.search(r"\((\d+)\)", kind)
             if length and len(value) > int(length[1]):
                 return False
-    return all(evaluate(check, row) is not False for check in checks)
+    try:
+        return all(evaluate(check, row) is not False for check in checks)
+    except (TypeError, ArithmeticError) as exc:
+        raise PlanError(f"CHECK types are incompatible in {table.name}: {exc}") from exc
 
 
 def validate_dataset(genome: Genome, data: Dataset) -> None:
@@ -164,6 +215,12 @@ def generate(
 ) -> tuple[Dataset, Receipt]:
     """Generate a fully validated in-memory dataset without network or LLM calls."""
     registry = registry or Registry.builtin()
+    original_genome = genome
+    if not plan.use_profiles:
+        genome = genome.model_copy(deep=True)
+        for entity in genome.tables:
+            for field in entity.columns:
+                field.profile = None
     data: Dataset = {}
     notes = []
     for table in ordered_tables(genome, set(plan.entities)):
@@ -173,6 +230,40 @@ def generate(
             raise PlanError(f"Unknown rule columns in {table.name}")
         if any(c.generated for c in table.columns):
             raise PlanError(f"Computed columns unsupported in v1: {table.name}")
+        allowed_types = {
+            "SMALLINT",
+            "BIGINT",
+            "INTEGER",
+            "INT",
+            "SERIAL",
+            "BIGSERIAL",
+            "SMALLSERIAL",
+            "NUMERIC",
+            "DECIMAL",
+            "REAL",
+            "FLOAT",
+            "DOUBLE PRECISION",
+            "BOOLEAN",
+            "BOOL",
+            "DATE",
+            "DATETIME",
+            "TIMESTAMP",
+            "UUID",
+            "VARCHAR",
+            "CHAR",
+            "CHARACTER",
+            "CHARACTER VARYING",
+            "TEXT",
+            "TIMESTAMP WITH TIME ZONE",
+            "TIMESTAMP WITHOUT TIME ZONE",
+            "TIMESTAMPTZ",
+        }
+        for column in table.columns:
+            base = re.sub(r"\([^)]*\)", "", column.sql_type.upper()).strip()
+            if base not in allowed_types:
+                raise PlanError(
+                    f"Unsupported SQL type: {column.sql_type} on {table.name}.{column.name}"
+                )
         fk_columns = [c for fk in table.foreign_keys for c in fk.columns]
         if len(fk_columns) != len(set(fk_columns)):
             raise PlanError(f"Overlapping FK columns unsupported in v1: {table.name}")
@@ -209,6 +300,17 @@ def generate(
             raise PlanError("Total rows exceed max_rows")
         quotas: dict[str, list[Scalar]] = {}
         nulls: dict[str, set[int]] = {}
+        for column in table.columns:
+            if (
+                column.name not in spec.rules
+                and column.name not in fk_columns
+                and column.nullable
+                and column.profile
+                and column.profile.sampled_rows
+            ):
+                nulls[column.name] = set(
+                    rng.sample(range(count), math.floor(count * column.profile.null_rate + 0.5))
+                )
         for name, rule in spec.rules.items():
             if rule.proportion is not None:
                 quota = math.floor(count * rule.proportion + 0.5)
@@ -282,11 +384,16 @@ def generate(
 
     receipt = Receipt(
         genome_hash=genome.fingerprint(),
+        genome_artifact_hash=digest(original_genome.model_dump_json()),
         plan_hash=digest(plan.model_dump_json()),
         data_hash=digest(json.dumps(data, sort_keys=True)),
         seed=plan.seed,
         versions={
-            **{name: version(name) for name in ("dataloom", "faker", "pydantic", "sqlglot")},
+            "python": platform.python_version(),
+            **{
+                name: version(name)
+                for name in ("dataloom", "faker", "pydantic", "sqlglot", "sqlalchemy")
+            },
             **{f"pack:{name}": pack.version for name, pack in registry.packs.items()},
         },
         row_counts={name: len(rows) for name, rows in data.items()},

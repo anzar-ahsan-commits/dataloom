@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections import Counter
+from contextlib import closing
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -21,7 +22,7 @@ class CoverageStore:
     def __init__(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
-        with sqlite3.connect(path) as connection:
+        with closing(sqlite3.connect(path)) as connection, connection:
             connection.execute(
                 "CREATE TABLE IF NOT EXISTS runs ("
                 "id INTEGER PRIMARY KEY, genome_hash TEXT NOT NULL, "
@@ -61,7 +62,7 @@ class CoverageStore:
                 ),
                 "rules": plan.entities[table.name].model_dump(mode="json"),
             }
-        with sqlite3.connect(self.path) as connection:
+        with closing(sqlite3.connect(self.path)) as connection, connection:
             connection.execute(
                 "INSERT INTO runs(genome_hash, fingerprint) VALUES (?, ?)",
                 (receipt.genome_hash, json.dumps(entities)),
@@ -69,7 +70,7 @@ class CoverageStore:
 
     def suggest(self, genome: Genome) -> list[str]:
         """Compare only runs of this schema; suggestions are observations, not proof."""
-        with sqlite3.connect(self.path) as connection:
+        with closing(sqlite3.connect(self.path)) as connection:
             history = [
                 json.loads(row[0])
                 for row in connection.execute(
