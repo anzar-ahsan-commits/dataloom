@@ -5,7 +5,6 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
-import re
 import tempfile
 from datetime import date, datetime
 from decimal import Decimal
@@ -16,6 +15,7 @@ from sqlalchemy import Date, DateTime, MetaData, Table
 
 from dataloom.engine import Dataset, Receipt, ordered_tables, validate_dataset
 from dataloom.errors import ConnectorError
+from dataloom.sqltypes import column_type
 
 if TYPE_CHECKING:
     from sqlalchemy import Engine
@@ -57,28 +57,24 @@ def _write_parquet(entity: Entity, rows: list[dict[str, object]], path: Path) ->
     fields = []
     arrays = []
     for column in entity.columns:
-        kind = column.sql_type.upper()
+        kind = column_type(column.sql_type)
         values = [row[column.name] for row in rows]
         arrow_type = pa.string()
-        if "INT" in kind or "SERIAL" in kind:
-            arrow_type = (
-                pa.int16() if "SMALL" in kind else pa.int64() if "BIG" in kind else pa.int32()
-            )
-        elif "BOOL" in kind:
+        if kind.family == "integer":
+            arrow_type = {16: pa.int16(), 64: pa.int64()}.get(kind.bits, pa.int32())
+        elif kind.family == "boolean":
             arrow_type = pa.bool_()
-        elif any(t in kind for t in ("NUMERIC", "DECIMAL", "REAL", "FLOAT", "DOUBLE")):
-            precision = re.search(r"\((\d+),\s*(\d+)\)", kind)
-            arrow_type = (
-                pa.decimal128(int(precision[1]), int(precision[2])) if precision else pa.float64()
-            )
-            if precision:
+        elif kind.family == "decimal":
+            if kind.digits is not None and kind.scale is not None:
+                arrow_type = pa.decimal128(kind.digits, kind.scale)
                 values = [Decimal(str(v)) if v is not None else None for v in values]
-        elif kind == "DATE":
+            else:
+                arrow_type = pa.float64()
+        elif kind.family == "date":
             arrow_type = pa.date32()
             values = [date.fromisoformat(str(v)) if v is not None else None for v in values]
-        elif "TIMESTAMP" in kind or "DATETIME" in kind:
-            zone = "UTC" if "WITH TIME ZONE" in kind or kind == "TIMESTAMPTZ" else None
-            arrow_type = pa.timestamp("us", tz=zone)
+        elif kind.family == "timestamp":
+            arrow_type = pa.timestamp("us", tz="UTC" if kind.zoned else None)
             values = [datetime.fromisoformat(str(v)) if v is not None else None for v in values]
         fields.append(pa.field(column.name, arrow_type, nullable=column.nullable))
         arrays.append(pa.array(values, type=arrow_type))

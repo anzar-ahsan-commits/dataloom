@@ -1,7 +1,10 @@
 # Reproducibility contract
 
-The same genome artifact, plan, plugin implementations, Python version, and
-dependency environment produce the same logical records. LLM authoring is outside
+The same DataLoom version, genome artifact, plan, plugin implementations, Python
+version, and dependency environment produce the same logical records. The DataLoom
+version is part of that contract: an engine or domain-pack change can alter generated
+values while leaving the plan format untouched, so the receipt records both the
+DataLoom version and every pack version. LLM authoring is outside
 that contract; save its output and replay the resulting plan offline.
 
 Each table receives a SHA-256-derived RNG seed based on the plan seed and table

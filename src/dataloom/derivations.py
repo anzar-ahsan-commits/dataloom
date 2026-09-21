@@ -12,6 +12,7 @@ from pydantic import Field, model_validator
 
 from dataloom.errors import PlanError
 from dataloom.genome import Model, Scalar
+from dataloom.sqltypes import column_type
 
 if TYPE_CHECKING:
     from random import Random
@@ -79,23 +80,21 @@ def dependencies(rule: Derivation) -> list[str]:
 def order_derivations(table: Table, rules: dict[str, Derivation]) -> list[str]:
     """Validate references/types and resolve a stable dependency order."""
     columns = {c.name: c for c in table.columns}
-    numeric = ("INT", "SERIAL", "NUMERIC", "DECIMAL", "REAL", "FLOAT", "DOUBLE")
     for target, rule in rules.items():
         if target not in columns or set(dependencies(rule)) - columns.keys():
             raise PlanError(f"Unknown derived source or target in {table.name}.{target}")
         if isinstance(rule, Arithmetic):
             for name in [target, *rule.fields]:
-                if not any(token in columns[name].sql_type.upper() for token in numeric):
+                if not column_type(columns[name].sql_type).numeric:
                     raise PlanError(f"Arithmetic requires numeric columns: {table.name}.{name}")
         if isinstance(rule, DateOffset):
             for name in [target, rule.source]:
-                kind = columns[name].sql_type.upper()
-                if not (kind == "DATE" or "TIMESTAMP" in kind or kind == "DATETIME"):
+                if not column_type(columns[name].sql_type).temporal:
                     raise PlanError(
                         f"Date offsets require date/timestamp columns: {table.name}.{name}"
                     )
-            if (columns[target].sql_type.upper() == "DATE") != (
-                columns[rule.source].sql_type.upper() == "DATE"
+            if (column_type(columns[target].sql_type).family == "date") != (
+                column_type(columns[rule.source].sql_type).family == "date"
             ):
                 raise PlanError("Date offsets must preserve date versus timestamp type")
     pending = {name: set(dependencies(rule)) & rules.keys() for name, rule in rules.items()}

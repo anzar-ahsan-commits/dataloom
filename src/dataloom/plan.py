@@ -94,7 +94,7 @@ class Plan(Model):
     reference_date: date = date(2025, 1, 1)
     use_profiles: bool = True
     entities: dict[str, EntityPlan] = Field(min_length=1)
-    max_rows: int = Field(default=100000, ge=1, le=10000000)
+    max_rows: int = Field(default=100000, ge=1, le=2000000)
 
     @classmethod
     def load(cls, path: Path) -> Plan:

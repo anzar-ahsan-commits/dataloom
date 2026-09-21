@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import MetaData, Table, select
 
 from dataloom.genome import Genome, Profile, Scalar
+from dataloom.sqltypes import column_type
 
 if TYPE_CHECKING:
     from sqlalchemy import Engine
@@ -76,10 +77,8 @@ def profile(genome: Genome, engine: Engine, limit: int = 1000, top_n: int = 5) -
                     for v in values
                     if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
                 )
-                numeric_date = any(
-                    t in column.sql_type.upper()
-                    for t in ("INT", "NUMERIC", "DECIMAL", "REAL", "FLOAT", "DATE", "TIME")
-                )
+                kind = column_type(column.sql_type)
+                numeric_date = kind.numeric or kind.temporal
                 ordered = sorted(values, key=lambda v: v if isinstance(v, (int, float)) else str(v))
                 column.profile = Profile(
                     sampled_rows=len(rows),

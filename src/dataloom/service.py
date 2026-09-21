@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Literal, Self
 from pydantic import Field, model_validator
 from sqlalchemy import create_engine
 
+from dataloom.autoplan import synthesize
 from dataloom.classification import classify
 from dataloom.connectors import DatabaseConnector, FileConnector
 from dataloom.coverage import CoverageStore
@@ -58,12 +59,14 @@ class ClassifyInput(GenomeInput):
 
 
 class GenerateInput(Model):
-    """Generate from a plan or request, using a stored genome or entity template."""
+    """Generate from a plan, a request, or a synthesized default plan."""
 
     genome_file: str | None = None
     template: str | None = None
     plan_file: str | None = None
     request: str | None = None
+    auto: bool = False
+    auto_rows: int = Field(default=50, ge=0, le=100000)
     output: str = ".dataloom/output"
     format: Literal["json", "csv", "parquet", "postgres"] = "json"
     target_database_env: str | None = None
@@ -74,8 +77,8 @@ class GenerateInput(Model):
         """Reject ambiguous schema and plan sources."""
         if (self.genome_file is None) == (self.template is None):
             raise ValueError("Specify exactly one of genome_file or template")
-        if (self.plan_file is None) == (self.request is None):
-            raise ValueError("Specify exactly one of plan_file or request")
+        if (self.plan_file is not None) + (self.request is not None) + self.auto != 1:
+            raise ValueError("Specify exactly one of plan_file, request, or auto")
         if self.format == "postgres" and not self.target_database_env:
             raise ValueError("Postgres output requires target_database_env")
         return self
@@ -213,7 +216,7 @@ class Service:
         )
 
     def generate(self, args: GenerateInput) -> GenerateResult:
-        """Author or load a plan, execute offline, publish, then record coverage."""
+        """Synthesize, author, or load a plan, execute offline, publish, record coverage."""
         if args.genome_file:
             genome = Genome.load(self.path(args.genome_file))
         else:
@@ -231,8 +234,13 @@ class Service:
             plan = Plan.load(self.path(args.plan_file))
             plan_path = args.plan_file
         else:
-            assert args.request is not None
-            plan = author_plan(args.request, genome, self.llm(), sorted(self.registry.generators))
+            if args.auto:
+                plan = synthesize(genome, args.auto_rows)
+            else:
+                assert args.request is not None
+                plan = author_plan(
+                    args.request, genome, self.llm(), sorted(self.registry.generators)
+                )
             plan_path = args.authored_plan_file
             plan.save(self.path(plan_path))
         data, receipt = generate(genome, plan, self.registry)

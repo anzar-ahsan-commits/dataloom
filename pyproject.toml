@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "dataloom"
-version = "0.1.0.dev1"
+version = "0.1.0.dev2"
 description = "Schema-aware synthetic test data generation with an MCP-native interface."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -66,9 +66,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/anzarahsan/dataloom"
-Repository = "https://github.com/anzarahsan/dataloom"
-Issues = "https://github.com/anzarahsan/dataloom/issues"
+Homepage = "https://github.com/anzar-ahsan-commits/dataloom"
+Repository = "https://github.com/anzar-ahsan-commits/dataloom"
+Issues = "https://github.com/anzar-ahsan-commits/dataloom/issues"
 
 [project.scripts]
 dataloom = "dataloom.cli.app:main"

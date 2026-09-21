@@ -26,9 +26,85 @@ Windows, Python 3.12.10, September 20, 2026:
 The skipped test is live PostgreSQL; Docker's daemon was unavailable locally.
 An isolated PostgreSQL 16 CI job is configured. GitHub Actions has not been run
 from this workspace; Python 3.11/3.13 and Linux are configured in CI, not claimed
-as locally verified. Nothing has been published to GitHub or PyPI.
+as locally verified. At that milestone, nothing had been published to GitHub or PyPI.
 
 See [scope.md](scope.md) for the supported SQL subset and explicit limitations.
+
+## First-run quality review — 0.1.0.dev2
+
+A review of the alpha found the engine contracts sound but the first-run experience
+thin: a dataset required either hand-written YAML naming exact columns or a provider
+key, and only five semantic generators existed, so most text columns produced
+`test-<hex>`. Three correctness issues surfaced alongside it.
+
+Addressed in this release:
+
+- Default plans. `synthesize` derives a plan from a genome, saved before execution
+  so it stays reviewable. Unsupported types, computed columns, and self-references
+  are reported together instead of one at a time.
+- Column semantics. 19 core generators, with exact, token-span, and camelCase name
+  matching. Generic words are excluded from subspan matching by design, so
+  `product_name` stays unlabelled rather than becoming a person.
+- Composite keys. Every generated member column of a candidate key took the same
+  row ordinal, so a `(region, id)` key produced `(1,1), (2,2), (3,3)`. Members now
+  take separate digits of a mixed-radix expansion of the row index.
+- Unique columns. A unique integer column fell back to the default 0-1000 bounds
+  and could not satisfy uniqueness past roughly 500 rows. Verified at 2,500 rows.
+- Type dispatch. `INTERVAL` matched the `INT` substring and was validated as an
+  integer. One exact type-family module now backs generation, validation, Parquet
+  typing, derivations, and profiling.
+- Diagnosis. A bounds rule contradicting a CHECK spent 500 attempts and then
+  advised narrowing the bounds. The error now names the violated constraint and
+  distinguishes contradiction from bad luck.
+- Suggestions. `suggest_gaps` emitted one fanout line per FK unconditionally. It
+  now reports only uncovered shapes, and adds boolean-branch and orphan-parent gaps.
+
+Validation on Windows, Python 3.12.10: **100 passed, 1 skipped** (live PostgreSQL),
+**88%** combined statement/branch coverage. Ruff lint/format and strict mypy passed.
+Both offline demos passed with unchanged row counts (50 patients, 205 orders, 310
+lab results, 31 abnormal) and a changed dataset hash, as expected from new generator
+values. Measured throughput rose from about 52,000 to about 87,000 rows per second
+on a two-table schema. GitHub Actions still has not run from this workspace: the
+3.11/3.13, Linux, and PostgreSQL 16 matrix remains configured rather than verified.
+
+## Live PostgreSQL verification — 0.1.0.dev2
+
+Run against PostgreSQL 16 in Docker, matching the CI service definition. The
+pre-existing integration test covered only INT columns and a composite foreign key
+and passed immediately; a wider probe covering every supported type family found
+that **no reflected CHECK constraint worked at all**. PostgreSQL rewrites checks
+when it stores them, so `balance >= 0` returns as `balance >= 0::numeric` and
+`tier IN (1,2,3)` as `tier = ANY (ARRAY[1, 2, 3])`. Both were rejected by the
+expression allowlist, which meant the documented live-database workflow failed on
+any table with an ordinary check.
+
+Both normalized forms are now supported, with casts limited to numeric, text, and
+boolean targets and `ANY` limited to equality against an explicit array; everything
+else still fails closed. `--auto` additionally reads those terms into `choices` and
+bounds rules, so an enumerated column generates directly rather than exhausting
+rejection sampling. All eleven supported type families reflected and round-tripped
+correctly, including `NUMERIC(10, 2)`, `TIMESTAMP WITH TIME ZONE`, `BIGSERIAL`,
+`UUID`, and `CHARACTER VARYING`.
+
+A wide integration test now covers the full type range, the normalized check forms,
+the derived rules, and insertion, so the gap cannot reopen silently. Unit tests
+cover the same expression forms without needing a database.
+
+Validation with the live service: **113 passed, 0 skipped**, 88% combined
+statement/branch coverage; ruff and strict mypy clean; both offline demos unchanged.
+
+Known limitations left open, in priority order:
+
+- Sequence columns inside a composite key are numbered across the table, not
+  restarted per parent, so `order_lines.line_no` runs 1..N globally instead of
+  1..k within each order. A per-parent counter for keys whose other members cover
+  the fanout foreign key would fix it.
+- Generation remains fully in memory and hashes the whole dataset as one string.
+- Unlabelled text still falls back to `test-<hex>`; low-cardinality columns such as
+  `status` need an explicit `choices` rule.
+- CHECK terms spanning two columns (`a > b`), disjunctions, and function calls are
+  understood by neither the evaluator nor the default planner.
+- GitHub Actions has still never run from this workspace.
 
 ## Architectural decisions
 

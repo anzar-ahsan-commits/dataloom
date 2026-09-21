@@ -24,15 +24,29 @@ Precision, length, required fields, keys and relationships are checked before ex
 
 CHECK support is intentionally bounded: literals, column references, comparison,
 AND/OR/NOT, NULL/IS, IN, BETWEEN, parentheses, unary minus and basic +/−/* arithmetic.
-SQL NULL logic is preserved: an UNKNOWN CHECK does not reject a row. Casts,
-functions, regex checks, subqueries and backend-specific operators are rejected.
-PostgreSQL may normalize simple checks into unsupported expressions; the error
-identifies the expression. The target database remains authoritative on insertion.
+SQL NULL logic is preserved: an UNKNOWN CHECK does not reject a row. Functions,
+regex checks, subqueries and backend-specific operators are rejected.
+
+PostgreSQL rewrites simple checks when it stores them, so reflected text is not the
+text that was written: `amount >= 0` comes back as `amount >= 0::numeric`, and
+`tier IN (1,2,3)` as `tier = ANY (ARRAY[1, 2, 3])`. Both normalized forms are
+supported, along with casts to numeric, text, and boolean types. Casts to other
+targets, and `ANY` in any position other than equality against an explicit array,
+are rejected rather than guessed at. The error identifies the expression. The
+target database remains authoritative on insertion.
 
 Cyclic and self-referential graphs, overlapping FK columns, and existing-parent
 lookups are not implemented. Parent pools use complete tuples, preventing composite
-key mixing. All generation is in memory. This is not a streaming or constraint-SMT
-engine and makes no learned cross-column statistical realism guarantee. Explicit
+key mixing. This is not a streaming or constraint-SMT engine and makes no learned
+cross-column statistical realism guarantee.
+
+All generation is in memory, and the dataset is serialized whole to compute its
+hash, so memory is the real ceiling rather than speed. A four-column two-table
+schema measured about 87,000 rows per second on one 2025 Windows laptop core,
+scaling linearly, at roughly 460 bytes of peak process memory per row. The
+`max_rows` guard therefore tops out at 2,000,000; treat anything above a few
+hundred thousand rows as needing a memory check first. `max_rows` is a guard, not
+a memory guarantee. Explicit
 cross-column business relationships are supported through typed copy, arithmetic,
 conditional, and date-offset derivations; see [plans.md](plans.md#derived-fields).
 

@@ -4,15 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import tempfile
-from typing import TYPE_CHECKING, Literal, Self
+from pathlib import Path
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from dataloom.errors import GenomeError
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 Scalar = str | int | float | bool | None
 
@@ -38,8 +37,6 @@ class Profile(Model):
     @model_validator(mode="after")
     def validate_quantiles(self) -> Self:
         """Require ordered finite quantiles with enough points to interpolate."""
-        import math
-
         if self.quantiles and (
             len(self.quantiles) < 2
             or any(not math.isfinite(v) for v in self.quantiles)
@@ -151,8 +148,6 @@ class Genome(Model):
     def save(self, path: Path) -> None:
         """Atomically persist a readable JSON artifact."""
         path.parent.mkdir(parents=True, exist_ok=True)
-        from pathlib import Path
-
         with tempfile.NamedTemporaryFile(
             mode="w", encoding="utf-8", dir=path.parent, suffix=".tmp", delete=False
         ) as stream:

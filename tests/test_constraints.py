@@ -2,6 +2,7 @@
 
 import pytest
 
+from dataloom.autoplan import synthesize
 from dataloom.constraints import evaluate, parse_check
 from dataloom.engine import generate
 from dataloom.errors import PlanError
@@ -34,3 +35,53 @@ def test_unsupported_checks_and_invalid_rules_fail() -> None:
         )
     with pytest.raises(PlanError, match="max_rows"):
         generate(genome, Plan(max_rows=1, entities={"t": EntityPlan(rows=2)}))
+
+
+@pytest.mark.parametrize(
+    ("sql", "value", "expected"),
+    [
+        ("balance >= 0::numeric", 5, True),
+        ("balance >= 0::numeric", -1, False),
+        ("balance >= 0::numeric", None, None),
+        ("tier = ANY (ARRAY[1, 2, 3])", 2, True),
+        ("tier = ANY (ARRAY[1, 2, 3])", 9, False),
+        ("tier = ANY (ARRAY[1, 2, 3])", None, None),
+        ("label = ANY (ARRAY['a', 'b'])", "b", True),
+        ("flag = true::boolean", True, True),
+    ],
+)
+def test_postgres_normalized_checks_are_understood(
+    sql: str, value: object, expected: bool | None
+) -> None:
+    column = sql.split(" ")[0]
+    assert evaluate(parse_check(sql), {column: value}) is expected
+
+
+def test_unsupported_cast_targets_and_any_forms_still_fail() -> None:
+    with pytest.raises(PlanError, match="cast target"):
+        parse_check("created_at >= now()::timestamp")
+    with pytest.raises(PlanError, match="Only equality against ANY"):
+        parse_check("tier <> ANY (ARRAY[1, 2])")
+
+
+def test_reflected_checks_become_choices_and_bounds() -> None:
+    genome = parse_ddl(
+        "CREATE TABLE t (id INT PRIMARY KEY, tier INT, balance NUMERIC(8,2), qty INT)"
+    )
+    genome.tables[0].checks = [
+        "tier = ANY (ARRAY[1, 2, 3])",
+        "balance >= 0::numeric",
+        "qty > 4 AND qty <= 9",
+    ]
+    rules = synthesize(genome, rows=25).entities["t"].rules
+    assert rules["tier"].choices == [1, 2, 3]
+    assert rules["balance"].minimum == 0.0
+    assert (rules["qty"].minimum, rules["qty"].maximum) == (5.0, 9.0)
+    data, _ = generate(genome, Plan(entities={"t": synthesize(genome, rows=25).entities["t"]}))
+    assert all(r["tier"] in (1, 2, 3) and 5 <= r["qty"] <= 9 for r in data["t"])
+
+
+def test_checks_that_are_not_understood_produce_no_rule() -> None:
+    genome = parse_ddl("CREATE TABLE t (id INT PRIMARY KEY, a INT, b INT)")
+    genome.tables[0].checks = ["a > b", "length(cast(b as text)) > 1"]
+    assert synthesize(genome).entities["t"].rules == {}

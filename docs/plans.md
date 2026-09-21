@@ -2,13 +2,27 @@
 
 Plans are JSON or safe-loaded YAML, validated with Pydantic. Unknown fields fail.
 
+`dataloom generate --auto` (MCP: `auto: true`) synthesizes one from a genome instead
+of asking you to write the first draft. It plans every entity so no parent is missing,
+gives each table without an outgoing foreign key `--rows` records, and fans every
+child out across its identifying parent -- the foreign key inside the child's own
+primary key where one exists, otherwise the first declared relationship -- at one to
+three children per parent. Columns carrying a supported single-column CHECK also
+receive a matching rule: an enumeration becomes `choices`, and comparisons or
+`BETWEEN` become bounds, so reflected constraints generate directly instead of
+relying on rejection sampling. Terms it does not understand produce no rule rather
+than a guess, and key and foreign-key columns are left to the engine. Other column
+semantics come from classification. The plan is saved before generation, so it is
+an editable starting point rather than a hidden default. Schemas with unsupported types, computed columns,
+or self-references are rejected with every offending column named at once.
+
 | Field | Default | Meaning |
 |---|---|---|
 | `format_version` | `1` | Unknown versions are rejected |
 | `seed` | `42` | Local PRNG seed, used to derive separate table streams |
 | `reference_date` | `2025-01-01` | Fixed anchor for date/time generation |
 | `use_profiles` | `true` | Use numeric quantiles and observed null rates where available |
-| `max_rows` | `100000` | Total in-memory row limit, maximum configurable value 10 million |
+| `max_rows` | `100000` | Total in-memory row limit, maximum configurable value 2 million |
 | `entities` | required | Table names mapped to row/fanout specifications |
 
 Each entity requires exactly one of `rows` (nonnegative integer) or `fanout`.
@@ -49,12 +63,27 @@ not automatically copied into generated records.
 Foreign-key overrides are rejected: values come from real generated parent tuples.
 FK columns currently receive no injected nulls. Uniqueness and CHECK constraints
 are handled with bounded rejection sampling (500 attempts per row). This is not a
-general constraint solver: narrow choices/bounds for restrictive constraints.
+general constraint solver: narrow choices/bounds for restrictive constraints. When
+a row cannot be satisfied, the error names the violated CHECK, length, type, or
+candidate key, and says whether every attempt produced identical values -- which
+means a rule contradicts a constraint and retrying cannot help.
 
 All values are generated explicitly. Stored SQL defaults are explained in the
-receipt but not executed. Integer primary keys start at 1; generation does not
-inspect existing target IDs. Empty child outputs are permitted. Nonempty children
+receipt but not executed. Empty child outputs are permitted. Nonempty children
 with empty parent pools fail before export.
+
+Integer and text columns that belong to a candidate key are numbered from the row
+index rather than sampled, so uniqueness holds at any row count instead of relying
+on rejection sampling. A single-column key counts 1, 2, 3. For a composite key,
+each member column DataLoom generates takes one digit of a mixed-radix expansion of
+the row index, so every member varies and the tuple stays unique; members supplied
+by a foreign key keep the parent value. Sequence numbers are unique across the
+table, not restarted per parent. Generation does not inspect existing target IDs.
+
+Semantic and fallback text is truncated to a declared length such as `VARCHAR(20)`.
+Truncation keeps generation deterministic instead of failing a row that is otherwise
+valid, but it can shorten a structured value; declare a length that fits the
+generator, or set an explicit rule, when the exact shape matters.
 
 All output is materialized in memory, then validated before writing. Large row
 counts need corresponding memory; the limit is a guard, not a memory guarantee.

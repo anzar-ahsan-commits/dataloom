@@ -54,17 +54,21 @@ def classify(
 def generate(
     plan: str | None = None,
     request: str | None = None,
+    auto: bool = False,
+    rows: int = 50,
     genome: str | None = None,
     template: str | None = None,
     output: str = ".dataloom/output",
     format: str = "json",
     target_database_env: str | None = None,
 ) -> None:
-    """Generate from a plan file offline or author a plan with an LLM."""
+    """Generate from a plan file, a synthesized default plan, or an LLM request."""
     args = GenerateInput.model_validate(
         {
             "plan_file": plan,
             "request": request,
+            "auto": auto,
+            "auto_rows": rows,
             "genome_file": genome or (None if template else ".dataloom/genome.json"),
             "template": template,
             "output": output,

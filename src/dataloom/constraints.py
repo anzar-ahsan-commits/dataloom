@@ -40,7 +40,32 @@ _SUPPORTED = (
     exp.Is,
     exp.In,
     exp.Between,
+    # PostgreSQL stores `x >= 0` as `x >= 0::numeric` and `x IN (1,2)` as
+    # `x = ANY (ARRAY[1,2])`. Reflected checks arrive in those normalized forms.
+    exp.Cast,
+    exp.DataType,
+    exp.Any,
+    exp.Array,
 )
+_CASTABLE = exp.DataType.NUMERIC_TYPES | exp.DataType.TEXT_TYPES | {exp.DataType.Type.BOOLEAN}
+
+
+def _cast_target(node: exp.Cast) -> exp.DataType.Type:
+    target = node.args.get("to")
+    if not isinstance(target, exp.DataType):
+        raise PlanError(f"Unsupported CHECK cast: {node.sql(dialect='postgres')}")
+    kind: exp.DataType.Type = target.this
+    return kind
+
+
+def _any_values(node: exp.Any) -> list[exp.Expression]:
+    """Unwrap `ANY (ARRAY[...])` into its literal elements."""
+    inner = node.this
+    while isinstance(inner, exp.Paren):
+        inner = inner.this
+    if not isinstance(inner, exp.Array):
+        raise PlanError("Only ANY over an explicit ARRAY literal is supported")
+    return list(inner.expressions)
 
 
 def parse_check(sql: str) -> exp.Expression:
@@ -49,7 +74,20 @@ def parse_check(sql: str) -> exp.Expression:
     for node in tree.walk():
         if type(node) not in _BINARY and not isinstance(node, _SUPPORTED):
             raise PlanError(f"Unsupported CHECK expression: {sql} ({type(node).__name__})")
+        if isinstance(node, exp.Cast) and _cast_target(node) not in _CASTABLE:
+            raise PlanError(f"Unsupported CHECK cast target: {sql} ({_cast_target(node).name})")
+        if isinstance(node, exp.Any):
+            _any_values(node)
+            if not isinstance(node.parent, exp.EQ):
+                raise PlanError(f"Only equality against ANY is supported: {sql}")
     return tree
+
+
+def _membership(left: Scalar, values: list[Scalar]) -> bool | None:
+    """Apply three-valued IN semantics shared by IN and `= ANY (ARRAY[...])`."""
+    if left is not None and left in values:
+        return True
+    return None if left is None or None in values else False
 
 
 def evaluate(node: exp.Expression, row: dict[str, Scalar]) -> Any:
@@ -64,6 +102,14 @@ def evaluate(node: exp.Expression, row: dict[str, Scalar]) -> Any:
         return node.this if node.is_string else float(node.this)
     if isinstance(node, exp.Paren):
         return evaluate(node.this, row)
+    if isinstance(node, exp.Cast):
+        value = evaluate(node.this, row)
+        if value is None:
+            return None
+        kind = _cast_target(node)
+        if kind in exp.DataType.NUMERIC_TYPES:
+            return bool(value) if isinstance(value, bool) else float(value)
+        return str(value) if kind in exp.DataType.TEXT_TYPES else bool(value)
     if isinstance(node, (exp.Neg, exp.Not)):
         value = evaluate(node.this, row)
         return None if value is None else -value if isinstance(node, exp.Neg) else not value
@@ -72,12 +118,9 @@ def evaluate(node: exp.Expression, row: dict[str, Scalar]) -> Any:
         low, high = evaluate(node.args["low"], row), evaluate(node.args["high"], row)
         return None if None in (left, low, high) else low <= left <= high
     if isinstance(node, exp.In):
-        values = [evaluate(v, row) for v in node.expressions]
-        return (
-            True
-            if left is not None and left in values
-            else (None if left is None or None in values else False)
-        )
+        return _membership(left, [evaluate(v, row) for v in node.expressions])
+    if isinstance(node, exp.EQ) and isinstance(node.expression, exp.Any):
+        return _membership(left, [evaluate(v, row) for v in _any_values(node.expression)])
     right = evaluate(node.expression, row)
     if isinstance(node, exp.Is):
         return left is right

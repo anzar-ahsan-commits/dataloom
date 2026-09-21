@@ -1,11 +1,20 @@
 # DataLoom
 
+[![Quality checks](https://github.com/anzar-ahsan-commits/dataloom/actions/workflows/ci.yml/badge.svg)](https://github.com/anzar-ahsan-commits/dataloom/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+**Alpha · Python 3.11+ · Local CLI, Python library, and MCP server**
+
 **Connected data. Repeatable scenarios.**
 
 DataLoom turns a relational schema into an inspectable **schema genome**, then
 generates synthetic test datasets from a versioned plan. Ask an MCP-connected
-agent for a scenario, review the resulting plan, and replay it in CI without an
-LLM. Or write the plan yourself and stay offline from the start.
+agent for a scenario, inspect the saved plan, and replay it in CI without an
+LLM. Natural-language generation authors and executes the plan in one operation;
+use a separately reviewed plan file when review must precede execution. Or write
+the plan yourself and stay offline from the start. A schema on its own is enough to
+begin: `--auto` derives a default plan, saves it for review, and executes it without
+a provider.
 
 The practical problem: realistic-looking individual records are easy. Test data
 with valid relationships, deliberate edge cases, repeatable distributions, and
@@ -22,6 +31,8 @@ Requires Python 3.11+ and an internet connection for the initial dependency
 installation. From a checkout, run this on Windows, macOS, or Linux:
 
 ```sh
+git clone https://github.com/anzar-ahsan-commits/dataloom.git
+cd dataloom
 python examples/run_demo.py
 ```
 
@@ -48,6 +59,7 @@ python -m pip install -e .
 dataloom introspect --ddl examples/demo_schema.sql
 dataloom classify
 dataloom explain
+dataloom generate --auto --rows 25 --output out/first
 dataloom generate --plan examples/plan.yaml --output out/baseline
 dataloom suggest-gaps
 ```
@@ -55,6 +67,25 @@ dataloom suggest-gaps
 Optional extras: `.[mcp]`, `.[anthropic]`, `.[postgres]`, `.[parquet]`, or `.[all]`.
 For development, install `.[dev]`. `python -m dataloom` works wherever the `dataloom`
 executable is not on PATH.
+
+`--auto` derives a plan from the schema alone: every entity is planned, tables with
+no outgoing foreign key receive `--rows` records, and every child fans out from its
+identifying parent. The result is written to `.dataloom/authored-plan.json`, so you
+can read it, edit it, and replay it with `--plan`. No plan file and no API key are
+involved. Schemas whose types, computed columns, or self-references fall outside
+Phase 1 are reported in full before anything is written.
+
+Classification recognizes common column names exactly, by token span
+(`customer_email`, `billing_city`, `internal_notes`), and in camelCase, then maps
+them onto the core generators: personal and full names, companies, job titles,
+street addresses, cities, US states, postcodes, countries, emails, usernames, URLs,
+phone numbers, IPv4 addresses, currency codes, and sentence-length descriptions.
+Identifier-shaped values stay inside ranges reserved for documentation and testing:
+`example.test`, `202-555-01xx`, `198.51.100.0/24`, and the never-issued `000` SSN
+area number. Generic words are deliberately left alone, so `product_name` and
+`order_state` stay unlabelled rather than borrowing a person or place meaning.
+Unlabelled text receives obviously synthetic `test-...` values; give those columns an
+explicit rule. Values longer than a declared length are truncated to fit.
 
 Output directories must be new. Choose another path to run again; DataLoom does
 not replace existing datasets. A bundle contains:
@@ -241,3 +272,14 @@ suite needs no live LLM. [Milestone evidence](docs/progress.md).
 
 MIT licensed. Public, fictional examples only. Contributions from other domains
 are welcome through the documented plugin interfaces.
+
+## Project resources
+
+- [Plan reference](docs/plans.md), [supported scope](docs/scope.md), and
+  [reproducibility](docs/determinism.md).
+- [Contributing](CONTRIBUTING.md) and [changelog](CHANGELOG.md).
+- [Security policy](SECURITY.md): report vulnerabilities privately.
+- [Bug reports and feature requests](https://github.com/anzar-ahsan-commits/dataloom/issues).
+
+The development version is installed from this repository. These instructions do
+not assume that a DataLoom package has been published to PyPI.

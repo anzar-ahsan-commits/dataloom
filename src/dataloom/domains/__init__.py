@@ -17,6 +17,9 @@ if TYPE_CHECKING:
 
     from dataloom.genome import Genome, Scalar
 
+# ISO 4217 codes only; no rates, amounts, or market data are implied.
+CURRENCIES = ("USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF")
+
 
 @dataclass
 class Context:
@@ -45,6 +48,37 @@ class DomainPack:
     templates: dict[str, Callable[[], Genome]] = field(default_factory=dict)
 
 
+# Identifier-shaped values stay inside ranges reserved for documentation and
+# testing: example.test (RFC 6761), 202-555-01xx, 198.51.100.0/24 (RFC 5737),
+# and the never-issued 000 SSN area number. Names and places come from Faker,
+# which is pinned because its datasets are part of the replay contract.
+CORE = DomainPack(
+    "core",
+    "2",
+    {
+        "email": lambda c: f"synthetic-{c.rng.getrandbits(64):016x}@example.test",
+        "username": lambda c: f"user{c.rng.getrandbits(32):08x}",
+        "url": lambda c: f"https://example.test/{c.rng.getrandbits(32):08x}",
+        "ipv4": lambda c: f"198.51.100.{c.rng.randint(1, 254)}",
+        "us_phone": lambda c: f"202-555-{c.rng.randint(100, 199):04d}",
+        "ssn": lambda c: f"000-{c.rng.randint(1, 99):02d}-{c.rng.randint(1, 9999):04d}",
+        "first_name": lambda c: str(c.faker.first_name()),
+        "last_name": lambda c: str(c.faker.last_name()),
+        "full_name": lambda c: str(c.faker.name()),
+        "job_title": lambda c: str(c.faker.job()),
+        "company": lambda c: str(c.faker.company()),
+        "street_address": lambda c: str(c.faker.street_address()),
+        "city": lambda c: str(c.faker.city()),
+        "us_state": lambda c: str(c.faker.state()),
+        "us_state_abbr": lambda c: str(c.faker.state_abbr()),
+        "postcode": lambda c: str(c.faker.postcode()),
+        "country": lambda c: str(c.faker.country()),
+        "currency_code": lambda c: c.rng.choice(CURRENCIES),
+        "description": lambda c: str(c.faker.sentence(nb_words=8)),
+    },
+)
+
+
 class Registry:
     """Explicit registry: duplicate semantic names fail instead of overriding."""
 
@@ -66,19 +100,7 @@ class Registry:
         from dataloom.domains.healthcare import PACK
 
         registry = cls()
-        registry.register(
-            DomainPack(
-                "core",
-                "1",
-                {
-                    "email": lambda c: f"synthetic-{c.rng.getrandbits(64):016x}@example.test",
-                    "first_name": lambda c: str(c.faker.first_name()),
-                    "last_name": lambda c: str(c.faker.last_name()),
-                    "us_phone": lambda c: f"202-555-{c.rng.randint(100, 199):04d}",
-                    "ssn": lambda c: f"000-{c.rng.randint(1, 99):02d}-{c.rng.randint(1, 9999):04d}",
-                },
-            )
-        )
+        registry.register(CORE)
         registry.register(PACK)
         if discover:
             for entry in entry_points(group="dataloom.domain_packs"):

@@ -2,9 +2,10 @@
 
 from typing import TypeVar
 
+import pytest
 from pydantic import BaseModel
 
-from dataloom.classification import classify
+from dataloom.classification import ALIASES, classify, semantic_for
 from dataloom.introspection import parse_ddl
 
 T = TypeVar("T", bound=BaseModel)
@@ -27,3 +28,26 @@ def test_cache_skips_second_provider_call() -> None:
     assert provider.calls == 1
     classify(first, provider, refresh=True)
     assert provider.calls == 2
+
+
+@pytest.mark.parametrize(
+    ("name", "label"),
+    [
+        ("customer_email", "email"),
+        ("shipping_city", "city"),
+        ("internal_notes", "description"),
+        ("EmailAddress", "email"),
+        ("firstName", "first_name"),
+        ("zipCode", "postcode"),
+        ("billing_state", "us_state"),
+        ("company_name", "company"),
+    ],
+)
+def test_token_spans_and_camel_case_are_recognized(name: str, label: str) -> None:
+    matched = semantic_for(name, set(ALIASES.values()))
+    assert matched is not None and matched[0] == label
+
+
+@pytest.mark.parametrize("name", ["product_name", "order_state", "status", "amount", "created_at"])
+def test_generic_words_do_not_borrow_a_person_or_place_meaning(name: str) -> None:
+    assert semantic_for(name, set(ALIASES.values())) is None
