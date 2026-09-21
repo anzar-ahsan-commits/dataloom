@@ -6,7 +6,7 @@
 4. MCP and CLI — complete; 26 tests at checkpoint, commit `0d389f9`.
 5. Demo, documentation, packaging and CI — complete; final evidence below.
 
-## Final local validation
+## Initial Phase 1 local validation
 
 Windows, Python 3.12.10, September 20, 2026:
 
@@ -45,3 +45,26 @@ See [scope.md](scope.md) for the supported SQL subset and explicit limitations.
 - Exact percentages use shuffled quotas, rounded to the nearest row.
 - File exports validate receipt provenance and stage bundles before publication.
   Parquet retains declared column types even when a table has no rows.
+
+## Business consistency enhancement — 0.1.0.dev1
+
+Independent field sampling could produce totals, flags, or event dates that were
+individually valid but contradicted each other. Added domain-neutral declarative
+derivations: copy, ordered arithmetic, conditional branches, and seeded date
+offsets. A stable field dependency graph resolves chains and rejects unknown
+references and cycles, including for empty datasets. No expression evaluation,
+network call, or new runtime dependency is involved.
+
+The ordinary CLI/MCP generation paths accept these rules through plan files and
+LLM-authored plans. Rules are additive to format v1; replay still requires matching
+engine/dependency versions. Existing plan behavior remains supported.
+
+Validation: **63 tests passed, 1 live-PostgreSQL test skipped; 87% overall coverage**.
+Ruff and strict mypy passed. New checks cover business arithmetic across three
+seeds, decimal rounding, conditional precedence, null propagation, invalid inputs,
+FK-field references, timestamps, export/replay, and SQLite insertion constraints.
+
+`python examples/run_demo.py --business-rules` passed in the isolated core-only
+environment. Its 100 fictional fulfillments have balancing totals, policy-based
+discounts, shipping 1–7 days after creation, and identical replay. See
+[the example plan](../examples/business_rules.yaml) and [rule reference](plans.md#derived-fields).

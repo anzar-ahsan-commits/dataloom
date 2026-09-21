@@ -1,0 +1,47 @@
+format_version: 1
+seed: 42
+entities:
+  fulfillments:
+    rows: 100
+    rules:
+      units:
+        choices: [1, 2, 5]
+      unit_price:
+        minimum: 5
+        maximum: 125
+      subtotal:
+        derive:
+          kind: arithmetic
+          operation: multiply
+          fields: [units, unit_price]
+          decimals: 2
+      discount:
+        derive:
+          kind: case
+          source: subtotal
+          cases:
+            - operator: ge
+              value: 100
+              then: 10
+          otherwise: 0
+      total:
+        derive:
+          kind: arithmetic
+          operation: subtract
+          fields: [subtotal, discount]
+          decimals: 2
+      shipped_on:
+        derive:
+          kind: date_offset
+          source: created_on
+          minimum_days: 1
+          maximum_days: 7
+      service_tier:
+        derive:
+          kind: case
+          source: units
+          cases:
+            - operator: ge
+              value: 5
+              then: bulk
+          otherwise: standard

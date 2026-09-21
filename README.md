@@ -76,6 +76,22 @@ Compare `receipt.data_hash` in the two manifests. See
 
 ## Plans are the product
 
+Business fields can now depend on each other: calculate totals from quantity and
+price, choose discounts or flags from other values, and generate shipping or
+resolution dates after creation. Dependencies are resolved automatically; unknown
+references and cycles fail before row generation. All rules stay deterministic
+and work through the existing CLI and MCP tools.
+
+Try the complete business-consistency demo:
+
+```sh
+python examples/run_demo.py --business-rules
+```
+
+It generates 100 fictional fulfillments and independently checks their arithmetic,
+discount policy, and shipping dates before exporting a replayable bundle. See
+[the plan](examples/business_rules.yaml) and [derived-field reference](docs/plans.md#derived-fields).
+
 ```yaml
 format_version: 1
 seed: 42

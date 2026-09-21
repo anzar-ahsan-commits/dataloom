@@ -18,6 +18,7 @@ from faker import Faker
 from pydantic import Field
 
 from dataloom.constraints import evaluate, parse_check
+from dataloom.derivations import derive, order_derivations
 from dataloom.domains import Context, Registry
 from dataloom.errors import GenerationError, PlanError
 from dataloom.genome import Column, Genome, Model, Scalar, Table
@@ -269,6 +270,10 @@ def generate(
             raise PlanError(f"Overlapping FK columns unsupported in v1: {table.name}")
         if set(fk_columns) & spec.rules.keys():
             raise PlanError("FK values come from parent pools; direct FK overrides are unsupported")
+        derived_rules = {
+            name: rule.derive for name, rule in spec.rules.items() if rule.derive is not None
+        }
+        derived_order = order_derivations(table, derived_rules)
         checks = [parse_check(check) for check in table.checks]
         derived = int.from_bytes(
             hashlib.sha256(f"{plan.seed}:{table.name}".encode()).digest(), "big"
@@ -331,7 +336,7 @@ def generate(
                 row: Row = {}
                 for column in table.columns:
                     name = column.name
-                    if name in fk_columns:
+                    if name in fk_columns or name in derived_rules:
                         continue
                     rule = spec.rules.get(name, Rule())
                     row[name] = (
@@ -359,6 +364,8 @@ def generate(
                             for child, target in zip(fk.columns, fk.parent_columns, strict=True)
                         }
                     )
+                for name in derived_order:
+                    row[name] = derive(derived_rules[name], row, rng)
                 tuples = [tuple(row[c] for c in key) for key in keys]
                 if _valid_row(table, row, checks) and all(
                     None in value or value not in pool

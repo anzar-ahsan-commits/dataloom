@@ -58,3 +58,72 @@ with empty parent pools fail before export.
 
 All output is materialized in memory, then validated before writing. Large row
 counts need corresponding memory; the limit is a guard, not a memory guarantee.
+
+## Derived fields
+
+Use `derive` when one field must agree with another. This is a typed rule language,
+not SQL or Python execution. It works with every supported output connector and
+with schema-free templates. Derived fields can reference other derived fields:
+DataLoom resolves the order regardless of YAML or schema column order.
+
+```yaml
+rules:
+  subtotal:
+    derive:
+      kind: arithmetic
+      operation: multiply
+      fields: [units, unit_price]
+      decimals: 2
+  discount:
+    derive:
+      kind: case
+      source: subtotal
+      cases:
+        - operator: ge
+          value: 100
+          then: 10
+      otherwise: 0
+  total:
+    derive:
+      kind: arithmetic
+      operation: subtract
+      fields: [subtotal, discount]
+      decimals: 2
+  shipped_on:
+    derive:
+      kind: date_offset
+      source: created_on
+      minimum_days: 1
+      maximum_days: 7
+  copied_status:
+    derive:
+      kind: copy
+      source: status
+```
+
+Arithmetic supports `add`, `subtract`, and `multiply`, applied left to right to
+at least two numeric fields. Computation uses Decimal with half-up rounding
+(for example, 1.005 rounds to 1.01 at two decimal places). Output still uses the
+engine's JSON scalar representation; arbitrary-precision financial accounting
+is not promised. The destination SQL type/precision must accept the result.
+
+Date offsets choose an inclusive whole-day offset using the run's seeded RNG.
+They preserve date versus timestamp representation and timestamp UTC offsets.
+Positive intervals produce later events; negative offsets are allowed explicitly.
+This is calendar-day arithmetic, not business-day calendars or timezone/DST rules.
+
+Cases use the first matching branch; supported operators are `eq`, `ne`, `lt`,
+`le`, `gt`, `ge`. Ordered comparisons require numeric values. If no branch matches,
+`otherwise` is returned (NULL if omitted). A NULL source does not match an ordered
+comparison; use `eq` with `value: null` to handle it explicitly.
+
+Copy, arithmetic and date offsets propagate source NULLs. Derived fields cannot
+also specify `null_rate`, choices, bounds, semantic generators, or quotas. Use
+the source rule to control its distribution. The final row still must satisfy
+nullability, keys, type limits, and SQL CHECK constraints.
+
+References are exact column names in the **same row**, including generated FK
+columns. Parent-column lookups, cross-row aggregates, arbitrary expressions, and
+cycles are not supported. Invalid references/cycles fail even for zero-row plans.
+The new fields are additive to format version 1; older engines reject them rather
+than silently ignoring the requested business relationships.

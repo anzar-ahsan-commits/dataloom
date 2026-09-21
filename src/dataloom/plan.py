@@ -8,6 +8,9 @@ from typing import TYPE_CHECKING, Literal, Self
 import yaml
 from pydantic import Field, model_validator
 
+from dataloom.derivations import (
+    Derivation,  # noqa: TC001 -- Pydantic resolves the union at runtime.
+)
 from dataloom.genome import Genome, Model, Scalar
 
 if TYPE_CHECKING:
@@ -27,6 +30,7 @@ class Rule(Model):
     proportion: float | None = Field(default=None, ge=0, le=1)
     value: Scalar = None
     otherwise: Scalar = None
+    derive: Derivation | None = None
 
     @model_validator(mode="after")
     def validate_rule(self) -> Self:
@@ -37,14 +41,17 @@ class Rule(Model):
                 self.choices is not None,
                 self.minimum is not None or self.maximum is not None,
                 self.proportion is not None,
+                self.derive is not None,
             )
         )
         if modes > 1:
-            raise ValueError("Use one of semantic_type, choices, bounds, or proportion")
+            raise ValueError("Use one of semantic_type, choices, bounds, proportion, or derive")
         if self.minimum is not None and self.maximum is not None and self.minimum > self.maximum:
             raise ValueError("minimum exceeds maximum")
         if self.proportion is not None and self.null_rate:
             raise ValueError("Proportion rules cannot also specify null_rate")
+        if self.derive is not None and self.null_rate:
+            raise ValueError("Derived fields inherit source NULLs; null_rate is not supported")
         return self
 
 
@@ -125,6 +132,8 @@ def author_plan(
     return provider.structured(
         f"Author a generation plan for this request: {request}\nSchema: {metadata}\n"
         f"Available semantic generators: {semantic_types or []}\n"
-        "Include all required parents. Use exact proportion rules for percentage requests.",
+        "Include all required parents. Use exact proportion rules for percentage requests. "
+        "Use derive rules for arithmetic totals, conditional fields, and relative dates. "
+        "Derived references must be columns of the same row; do not invent SQL expressions.",
         Plan,
     )

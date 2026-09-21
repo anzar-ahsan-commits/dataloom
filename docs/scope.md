@@ -32,7 +32,9 @@ identifies the expression. The target database remains authoritative on insertio
 Cyclic and self-referential graphs, overlapping FK columns, and existing-parent
 lookups are not implemented. Parent pools use complete tuples, preventing composite
 key mixing. All generation is in memory. This is not a streaming or constraint-SMT
-engine and makes no cross-column statistical realism guarantee.
+engine and makes no learned cross-column statistical realism guarantee. Explicit
+cross-column business relationships are supported through typed copy, arithmetic,
+conditional, and date-offset derivations; see [plans.md](plans.md#derived-fields).
 
 Profiling samples at most the requested rows per table, ordered by primary key
 where available. This is a bounded sample, not a random population sample. Tables
