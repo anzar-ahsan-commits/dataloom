@@ -1,0 +1,18 @@
+name: Feature request
+description: Describe a real test-data problem and the behavior you need.
+title: "[Feature]: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem and use case
+      description: Who needs this, and which scenario is difficult today? Use fictional examples.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior and alternatives
+      description: Describe useful outcomes, constraints, and any current workaround.
+    validations:
+      required: true

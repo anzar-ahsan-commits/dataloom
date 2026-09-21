@@ -1,0 +1,28 @@
+name: Bug report
+description: Report a reproducible problem using fictional inputs.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: "For vulnerabilities, follow SECURITY.md. Do not include credentials, production data, or confidential schemas."
+  - type: textarea
+    id: problem
+    attributes:
+      label: Expected and actual behavior
+      description: Explain the scenario and what went wrong.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: Include fictional DDL, plan, command, and relevant error output.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: DataLoom revision, Python version, OS, installed extras, and database version if relevant.
+    validations:
+      required: true

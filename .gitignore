@@ -12,6 +12,10 @@ dist/
 .verify-venv/
 venv/
 .env
+.env.*
+!.env.example
+*.pem
+*.key
 
 # Tooling caches
 .pytest_cache/
@@ -30,6 +34,11 @@ htmlcov/
 .dataloom/output/
 out/
 *.parquet
+
+# Local product strategy and marketing documentation (not for publication)
+/local-marketing/
+/.agents/
+/.codex/
 
 # OS / editor
 .DS_Store
