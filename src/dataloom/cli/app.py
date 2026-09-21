@@ -69,7 +69,7 @@ def generate(
             "request": request,
             "auto": auto,
             "auto_rows": rows,
-            "genome_file": genome or (None if template else ".dataloom/genome.json"),
+            "genome_file": genome,
             "template": template,
             "output": output,
             "format": format,

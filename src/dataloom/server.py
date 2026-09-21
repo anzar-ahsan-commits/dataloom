@@ -1,11 +1,11 @@
-"""Official MCP SDK FastMCP adapter; stdout is reserved for the protocol."""
+"""Official MCP SDK MCPServer adapter; stdout is reserved for the protocol."""
 
 from __future__ import annotations
 
 import os
 from pathlib import Path
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 from dataloom.genome import Genome, Model
 from dataloom.service import (
@@ -25,9 +25,9 @@ class EmptyInput(Model):
     """Explicit empty input for capability discovery."""
 
 
-def create_server(service: Service) -> FastMCP:
+def create_server(service: Service) -> MCPServer:
     """Bind six typed tools and a genome resource to shared application services."""
-    server = FastMCP("DataLoom")
+    server = MCPServer("DataLoom")
 
     @server.tool()
     def introspect_schema(args: IntrospectInput) -> GenomeResult:

@@ -195,8 +195,8 @@ dedicated test database and manage subsequent application inserts accordingly.
 
 ## MCP
 
-Install `.[mcp]`. DataLoom uses the official Python SDK's FastMCP v1 API with a
-`<2` dependency bound. Configure a stdio server in Claude Desktop using absolute
+Install `.[mcp]`. DataLoom uses the official Python SDK's `MCPServer` API and
+requires mcp 2.2 or newer; the 1.x FastMCP API is no longer supported. Configure a stdio server in Claude Desktop using absolute
 paths (on Windows, JSON paths require doubled backslashes):
 
 ```json

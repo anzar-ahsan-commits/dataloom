@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
-from typing import TYPE_CHECKING, Literal, Self
+from typing import TYPE_CHECKING, Any, Literal, Self
 
 from pydantic import Field, model_validator
 from sqlalchemy import create_engine
@@ -45,10 +45,13 @@ class IntrospectInput(Model):
         return self
 
 
+DEFAULT_GENOME = ".dataloom/genome.json"
+
+
 class GenomeInput(Model):
     """Reference a persisted genome within the workspace."""
 
-    genome_file: str = ".dataloom/genome.json"
+    genome_file: str = DEFAULT_GENOME
 
 
 class ClassifyInput(GenomeInput):
@@ -72,11 +75,19 @@ class GenerateInput(Model):
     target_database_env: str | None = None
     authored_plan_file: str = ".dataloom/authored-plan.json"
 
+    @model_validator(mode="before")
+    @classmethod
+    def default_schema_source(cls, data: Any) -> Any:
+        """Fall back to the workspace genome so every adapter behaves alike."""
+        if isinstance(data, dict) and data.get("genome_file") is None and not data.get("template"):
+            return {**data, "genome_file": DEFAULT_GENOME}
+        return data
+
     @model_validator(mode="after")
     def validate_sources(self) -> Self:
         """Reject ambiguous schema and plan sources."""
-        if (self.genome_file is None) == (self.template is None):
-            raise ValueError("Specify exactly one of genome_file or template")
+        if self.genome_file is not None and self.template is not None:
+            raise ValueError("Specify genome_file or template, not both")
         if (self.plan_file is not None) + (self.request is not None) + self.auto != 1:
             raise ValueError("Specify exactly one of plan_file, request, or auto")
         if self.format == "postgres" and not self.target_database_env:

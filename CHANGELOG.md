@@ -3,6 +3,20 @@
 This project is in alpha. Entries describe implemented source changes, not a
 promise of a published package or compatibility beyond the documented scope.
 
+## 0.1.0.dev3
+
+**Breaking:** the MCP extra now requires mcp 2.2 or newer. The official SDK renamed
+`FastMCP` to `MCPServer` in 2.x and dropped the 1.x module, so `.[mcp]` moved from
+`>=1.28,<2.0` to `>=2.2.0,<3.0`. Reinstall the extra when upgrading. The six tools,
+their typed `args` objects, the `genome://current` resource, and the stdio transport
+are unchanged; only the SDK import and a few of its response attribute names moved.
+
+- Migrated the MCP adapter to the `MCPServer` API.
+- `generate_dataset` no longer requires `genome_file`. It falls back to the workspace
+  genome exactly as the CLI already did, so an agent can call it with `auto` alone.
+  Specifying both `genome_file` and `template` is still rejected. The defaulting now
+  lives in the shared input model rather than the CLI adapter.
+
 ## 0.1.0.dev2
 
 - Added `--auto` (MCP `auto`) to synthesize a reviewable default plan from a genome,

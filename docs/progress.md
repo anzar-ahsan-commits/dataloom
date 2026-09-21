@@ -93,6 +93,35 @@ cover the same expression forms without needing a database.
 Validation with the live service: **113 passed, 0 skipped**, 88% combined
 statement/branch coverage; ruff and strict mypy clean; both offline demos unchanged.
 
+## CI and MCP 2.x — 0.1.0.dev3
+
+The first GitHub Actions run passed on all seven jobs: six test matrix combinations
+across Python 3.11/3.12/3.13 on Ubuntu and Windows, plus the PostgreSQL 16 service
+job. The configured matrix is now verified rather than assumed, and the wide
+PostgreSQL type and CHECK test runs in CI instead of skipping.
+
+Adding `dependabot.yml` immediately opened four dependency pull requests. Three
+passed. The mcp bump to 2.x failed, because the official SDK renamed `FastMCP` to
+`MCPServer` and removed the 1.x module; it also broke the PostgreSQL job, since
+`pytest -m integration` still collects the MCP test modules and the import error
+fails collection before marker filtering.
+
+Rather than pin away from it, the adapter was migrated after verifying the cost
+against a real mcp 2.2.0 install: every method used (`tool`, `resource`, `run`,
+`list_tools`, `call_tool`, `list_resources`, `read_resource`) exists under the same
+name, and the only other changes are response attribute renames from camelCase to
+snake_case (`inputSchema`, `isError`, `structuredContent`), all of which appear in
+tests rather than in `server.py`.
+
+Exercising the tools over the real transport also exposed an adapter inconsistency:
+`generate_dataset` required `genome_file`, which the CLI had been defaulting on its
+own, so an agent calling it with `auto` alone received a validation error where a CLI
+user received a dataset. The default moved into the shared input model.
+
+Validation: **115 passed, 0 skipped** against mcp 2.2.0 and live PostgreSQL 16;
+ruff, format, and strict mypy clean; both offline demos unchanged; wheel and sdist
+build with Twine metadata checks passing.
+
 Known limitations left open, in priority order:
 
 - Sequence columns inside a composite key are numbered across the table, not
@@ -104,7 +133,8 @@ Known limitations left open, in priority order:
   `status` need an explicit `choices` rule.
 - CHECK terms spanning two columns (`a > b`), disjunctions, and function calls are
   understood by neither the evaluator nor the default planner.
-- GitHub Actions has still never run from this workspace.
+- The MCP tools have been driven by tests and by the stdio transport, but not yet by
+  a real agent deciding the workflow for itself.
 
 ## Architectural decisions
 
