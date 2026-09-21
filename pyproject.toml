@@ -58,7 +58,7 @@ dev = [
     "dataloom[all]",
     "pytest>=8.0",
     "pytest-cov>=5.0",
-    "ruff>=0.6,<0.15",
+    "ruff>=0.16.8,<0.17",
     "mypy>=1.11",
     "types-pyyaml",
     "build>=1.2",
