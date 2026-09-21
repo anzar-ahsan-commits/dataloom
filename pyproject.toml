@@ -34,7 +34,7 @@ classifiers = [
 # Core runtime. Kept deliberately small; anything that pulls heavy binary
 # wheels or vendor SDKs lives in an optional extra below.
 dependencies = [
-    "sqlalchemy>=2.0,<3.0",
+    "sqlalchemy>=2.0.54,<3.0",
     "pydantic>=2.7,<3.0",
     # Provider datasets can change between Faker releases. Exact version is
     # part of the reproducibility contract -- see docs/determinism.md.
