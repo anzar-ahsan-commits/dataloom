@@ -30,9 +30,12 @@ regex checks, subqueries and backend-specific operators are rejected.
 PostgreSQL rewrites simple checks when it stores them, so reflected text is not the
 text that was written: `amount >= 0` comes back as `amount >= 0::numeric`, and
 `tier IN (1,2,3)` as `tier = ANY (ARRAY[1, 2, 3])`. Both normalized forms are
-supported, along with casts to numeric, text, and boolean types. Casts to other
-targets, and `ANY` in any position other than equality against an explicit array,
-are rejected rather than guessed at. The error identifies the expression. The
+supported. Literal casts cover a bounded set of numeric, text, and boolean
+primitives; invalid Boolean spellings and out-of-range integers fail explicitly.
+Numeric/Boolean casts of column-dependent expressions are rejected because their
+source SQL type and conversion semantics are not modeled. Parameterized casts,
+other target types, and `ANY` outside equality against an explicit array are
+rejected rather than guessed at. The error identifies the expression. The
 target database remains authoritative on insertion.
 
 Cyclic and self-referential graphs, overlapping FK columns, and existing-parent
@@ -66,7 +69,8 @@ create tables, clear data, or adjust sequences.
 
 Coverage stores aggregate observations by structural schema fingerprint, including
 ranges, null counts, semantic labels, fanout, and plan rules. Suggestions only
-inspect missing entities, missing nulls, and observed fanout maxima. They do not
+inspect missing entities, missing nulls, boolean branches, fanout maxima, and
+unreferenced parents. They do not
 claim application code coverage, clinical validity, or completeness.
 
 The masking and subsetting modules are explicit future-phase stubs. There is no

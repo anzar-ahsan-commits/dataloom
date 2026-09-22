@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import math
 import operator
+import re
+from decimal import ROUND_HALF_UP, Decimal
 from typing import TYPE_CHECKING, Any
 
 import sqlglot
@@ -47,7 +50,22 @@ _SUPPORTED = (
     exp.Any,
     exp.Array,
 )
-_CASTABLE = exp.DataType.NUMERIC_TYPES | exp.DataType.TEXT_TYPES | {exp.DataType.Type.BOOLEAN}
+_INTEGER_CASTS = {
+    exp.DataType.Type.SMALLINT: 16,
+    exp.DataType.Type.INT: 32,
+    exp.DataType.Type.BIGINT: 64,
+}
+_TEXT_CASTS = {exp.DataType.Type.TEXT, exp.DataType.Type.VARCHAR, exp.DataType.Type.CHAR}
+_CASTABLE = (
+    set(_INTEGER_CASTS)
+    | _TEXT_CASTS
+    | {
+        exp.DataType.Type.DECIMAL,
+        exp.DataType.Type.FLOAT,
+        exp.DataType.Type.DOUBLE,
+        exp.DataType.Type.BOOLEAN,
+    }
+)
 
 
 def _cast_target(node: exp.Cast) -> exp.DataType.Type:
@@ -76,6 +94,12 @@ def parse_check(sql: str) -> exp.Expression:
             raise PlanError(f"Unsupported CHECK expression: {sql} ({type(node).__name__})")
         if isinstance(node, exp.Cast) and _cast_target(node) not in _CASTABLE:
             raise PlanError(f"Unsupported CHECK cast target: {sql} ({_cast_target(node).name})")
+        if (
+            isinstance(node, exp.Cast)
+            and _cast_target(node) not in _TEXT_CASTS
+            and any(isinstance(child, exp.Column) for child in node.this.walk())
+        ):
+            raise PlanError(f"Only literal numeric/boolean CHECK casts are supported: {sql}")
         if isinstance(node, exp.Any):
             _any_values(node)
             if not isinstance(node.parent, exp.EQ):
@@ -90,6 +114,59 @@ def _membership(left: Scalar, values: list[Scalar]) -> bool | None:
     return None if left is None or None in values else False
 
 
+def _cast(value: Any, kind: exp.DataType.Type) -> Any:
+    """Convert supported scalar casts without Python truthiness or truncation."""
+    if value is None:
+        return None
+    try:
+        if kind in _TEXT_CASTS:
+            return ("true" if value else "false") if isinstance(value, bool) else str(value)
+        if kind == exp.DataType.Type.BOOLEAN:
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, int):
+                return value != 0
+            if isinstance(value, str):
+                token = value.strip().lower()
+                if token in {"1", "0"}:
+                    return token == "1"
+                matches = {
+                    answer
+                    for word, answer in (
+                        ("true", True),
+                        ("yes", True),
+                        ("on", True),
+                        ("false", False),
+                        ("no", False),
+                        ("off", False),
+                    )
+                    if token and word.startswith(token)
+                }
+                if len(matches) == 1:
+                    return matches.pop()
+            raise ValueError("invalid boolean input")
+        if kind in _INTEGER_CASTS:
+            if isinstance(value, str) and not re.fullmatch(r"[+-]?[0-9]+", value.strip()):
+                raise ValueError("integer text must contain only a signed integer")
+            integer = (
+                int(value)
+                if isinstance(value, (str, int))
+                else int(Decimal(str(value)).to_integral_value(rounding=ROUND_HALF_UP))
+            )
+            bits = _INTEGER_CASTS[kind]
+            if not -(2 ** (bits - 1)) <= integer < 2 ** (bits - 1):
+                raise ValueError("integer out of range")
+            return integer
+        if isinstance(value, bool):
+            raise ValueError("boolean to non-integer numeric cast is unsupported")
+        number = float(value)
+        if not math.isfinite(number):
+            raise ValueError("nonfinite numeric input")
+        return number
+    except (ValueError, TypeError, ArithmeticError) as exc:
+        raise PlanError(f"Invalid or unsupported CHECK cast to {kind.name}: {exc}") from exc
+
+
 def evaluate(node: exp.Expression, row: dict[str, Scalar]) -> Any:
     """Evaluate a supported CHECK expression using three-valued SQL logic."""
     if isinstance(node, exp.Column):
@@ -99,17 +176,15 @@ def evaluate(node: exp.Expression, row: dict[str, Scalar]) -> Any:
     if isinstance(node, exp.Boolean):
         return bool(node.this)
     if isinstance(node, exp.Literal):
-        return node.this if node.is_string else float(node.this)
+        return (
+            node.this
+            if node.is_string
+            else (int(node.this) if re.fullmatch(r"[0-9]+", node.this) else float(node.this))
+        )
     if isinstance(node, exp.Paren):
         return evaluate(node.this, row)
     if isinstance(node, exp.Cast):
-        value = evaluate(node.this, row)
-        if value is None:
-            return None
-        kind = _cast_target(node)
-        if kind in exp.DataType.NUMERIC_TYPES:
-            return bool(value) if isinstance(value, bool) else float(value)
-        return str(value) if kind in exp.DataType.TEXT_TYPES else bool(value)
+        return _cast(evaluate(node.this, row), _cast_target(node))
     if isinstance(node, (exp.Neg, exp.Not)):
         value = evaluate(node.this, row)
         return None if value is None else -value if isinstance(node, exp.Neg) else not value

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "dataloom"
-version = "0.1.0.dev3"
+version = "0.1.0.dev4"
 description = "Schema-aware synthetic test data generation with an MCP-native interface."
 readme = "README.md"
 requires-python = ">=3.11"

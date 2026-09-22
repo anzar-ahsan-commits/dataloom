@@ -97,3 +97,27 @@ def test_cli_generates_from_a_schema_alone(tmp_path: Path, monkeypatch: pytest.M
     assert (tmp_path / ".dataloom/authored-plan.json").is_file()
     assert (tmp_path / "out/plan.json").is_file()
     assert '"customers": 8' in result.output
+
+
+@pytest.mark.parametrize(
+    ("constraint", "expected"),
+    [
+        ("x >= 5000", (5000, 6000)),
+        ("x <= -5", (-1005, -5)),
+        ("x > 1.5 AND x < 2.5", (2, 2)),
+        ("x BETWEEN -8 AND -3", (-8, -3)),
+    ],
+)
+def test_auto_numeric_bounds_cover_valid_nondefault_ranges(
+    constraint: str, expected: tuple[int, int]
+) -> None:
+    genome = parse_ddl(f"CREATE TABLE t(id INT PRIMARY KEY, x INT CHECK({constraint}))")
+    plan = synthesize(genome, rows=12)
+    data, _ = generate(genome, plan)
+    assert all(expected[0] <= row["x"] <= expected[1] for row in data["t"])
+
+
+def test_impossible_integer_check_explains_the_column() -> None:
+    genome = parse_ddl("CREATE TABLE t(id INT PRIMARY KEY, x INT CHECK(x > 1 AND x < 2))")
+    with pytest.raises(PlanError, match=r"t\.x"):
+        synthesize(genome)

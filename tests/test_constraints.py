@@ -85,3 +85,33 @@ def test_checks_that_are_not_understood_produce_no_rule() -> None:
     genome = parse_ddl("CREATE TABLE t (id INT PRIMARY KEY, a INT, b INT)")
     genome.tables[0].checks = ["a > b", "length(cast(b as text)) > 1"]
     assert synthesize(genome).entities["t"].rules == {}
+
+
+@pytest.mark.parametrize(
+    ("sql", "row", "expected"),
+    [
+        ("x = 'false'::boolean", {"x": True}, False),
+        ("x = 'false'::boolean", {"x": False}, True),
+        ("x = 'off'::boolean", {"x": False}, True),
+        ("x = 1.8::integer", {"x": 2}, True),
+        ("x = (-1.5)::integer", {"x": -2}, True),
+        ("x = 9007199254740993::bigint", {"x": 9007199254740993}, True),
+        ("x = true::text", {"x": "true"}, True),
+    ],
+)
+def test_casts_do_not_use_python_truthiness_or_lose_integer_precision(
+    sql: str, row: dict, expected: bool
+) -> None:
+    assert evaluate(parse_check(sql), row) is expected
+
+
+@pytest.mark.parametrize("sql", ["x = 'not-a-boolean'::boolean", "x = '1.8'::integer"])
+def test_invalid_casts_raise_a_domain_error(sql: str) -> None:
+    with pytest.raises(PlanError, match="cast"):
+        evaluate(parse_check(sql), {"x": 1})
+
+
+@pytest.mark.parametrize("sql", ["x::integer > 0", "x::boolean = true"])
+def test_source_type_dependent_casts_fail_before_generation(sql: str) -> None:
+    with pytest.raises(PlanError, match="Only literal"):
+        parse_check(sql)

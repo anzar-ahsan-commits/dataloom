@@ -51,3 +51,21 @@ def test_token_spans_and_camel_case_are_recognized(name: str, label: str) -> Non
 @pytest.mark.parametrize("name", ["product_name", "order_state", "status", "amount", "created_at"])
 def test_generic_words_do_not_borrow_a_person_or_place_meaning(name: str) -> None:
     assert semantic_for(name, set(ALIASES.values())) is None
+
+
+def test_string_semantics_do_not_override_numeric_identifiers() -> None:
+    from dataloom.autoplan import synthesize
+    from dataloom.engine import generate
+
+    genome = classify(
+        parse_ddl(
+            "CREATE TABLE t(id INT PRIMARY KEY, company_id INT NOT NULL, "
+            "phone_number BIGINT, company_name TEXT)"
+        )
+    )
+    columns = {column.name: column for column in genome.tables[0].columns}
+    assert columns["company_id"].classification is None
+    assert columns["phone_number"].classification is None
+    label = columns["company_name"].classification
+    assert label is not None and label.classifier_version == "3"
+    generate(genome, synthesize(genome, rows=5))

@@ -8,11 +8,12 @@ import re
 from typing import TYPE_CHECKING
 
 from dataloom.genome import Classification, Genome, Model
+from dataloom.sqltypes import column_type
 
 if TYPE_CHECKING:
     from dataloom.providers import Provider
 
-CLASSIFIER_VERSION = 2
+CLASSIFIER_VERSION = 3
 
 ALIASES = {
     "email": "email",
@@ -152,16 +153,28 @@ def classify(
                 continue
             column.classification = None
             column.classification_cache_key = None
-            matched = semantic_for(column.name, allowed)
+            textual = column_type(column.sql_type).family == "text"
+            matched = semantic_for(column.name, allowed) if textual else None
             if matched:
                 label, evidence = matched
                 column.classification = Classification(
-                    semantic_type=label, source="name", evidence=evidence
+                    semantic_type=label,
+                    source="name",
+                    evidence=evidence,
+                    classifier_version=str(CLASSIFIER_VERSION),
                 )
                 column.classification_cache_key = cache_keys[key]
-            elif column.profile and column.profile.pattern == SSN_PATTERN:
+            elif (
+                textual
+                and "ssn" in allowed
+                and column.profile
+                and column.profile.pattern == SSN_PATTERN
+            ):
                 column.classification = Classification(
-                    semantic_type="ssn", source="pattern", evidence="Observed 3-2-4 digit shape"
+                    semantic_type="ssn",
+                    source="pattern",
+                    evidence="Observed 3-2-4 digit shape",
+                    classifier_version=str(CLASSIFIER_VERSION),
                 )
                 column.classification_cache_key = cache_keys[key]
             else:
@@ -180,7 +193,10 @@ def classify(
             if key not in pending or label not in allowed:
                 raise ValueError(f"Provider returned an unknown column or semantic type: {key}")
             pending[key].classification = Classification(
-                semantic_type=label, source="llm", evidence="Metadata disambiguation"
+                semantic_type=label,
+                source="llm",
+                evidence="Metadata disambiguation",
+                classifier_version=str(CLASSIFIER_VERSION),
             )
         for key, column in pending.items():
             column.classification_cache_key = cache_keys[key]

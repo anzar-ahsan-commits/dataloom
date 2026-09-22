@@ -4,10 +4,11 @@ import os
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 
 from dataloom.autoplan import synthesize
 from dataloom.connectors import DatabaseConnector
+from dataloom.constraints import evaluate, parse_check
 from dataloom.engine import generate
 from dataloom.introspection import reflect
 from dataloom.plan import EntityPlan, Plan
@@ -117,4 +118,33 @@ def test_every_supported_type_and_normalized_check_round_trips() -> None:
     finally:
         with engine.begin() as connection:
             connection.exec_driver_sql(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+        engine.dispose()
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    ("expression", "value"),
+    [
+        ("x = 'false'::boolean", True),
+        ("x = 'off'::boolean", False),
+        ("x = 1.8::integer", 2),
+        ("x = (-1.5)::integer", -2),
+        ("x = 9007199254740993::bigint", 9007199254740993),
+        ("x = true::text", "true"),
+    ],
+)
+def test_supported_cast_results_match_postgres(expression: str, value: object) -> None:
+    """Compare CHECK evaluation with PostgreSQL, not another implementation copy."""
+    url = os.environ.get("DATALOOM_TEST_POSTGRES")
+    if not url:
+        pytest.skip("Set DATALOOM_TEST_POSTGRES to an isolated PostgreSQL database")
+    engine = create_engine(url)
+    try:
+        with engine.connect() as connection:
+            actual = connection.execute(
+                text(f"SELECT {expression} FROM (SELECT :value AS x) AS input"),
+                {"value": value},
+            ).scalar_one()
+        assert evaluate(parse_check(expression), {"x": value}) is actual
+    finally:
         engine.dispose()

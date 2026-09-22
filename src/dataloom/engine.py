@@ -6,6 +6,7 @@ import hashlib
 import json
 import math
 import platform
+from collections import Counter
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from functools import lru_cache
@@ -238,7 +239,17 @@ def validate_dataset(genome: Genome, data: Dataset) -> None:
 
 def _candidate_positions(table: Table, synthesized: set[str]) -> dict[str, tuple[int, int]]:
     """Map each key column DataLoom generates to its position within that key."""
-    positions: dict[str, tuple[int, int]] = {}
+    memberships = Counter(
+        name
+        for candidate in {tuple(key) for key in [table.primary_key, *table.unique] if key}
+        for name in candidate
+        if name in synthesized
+    )
+    # A member shared by candidate keys must not inherit a repeating digit from
+    # whichever composite key happened to be visited first.
+    positions: dict[str, tuple[int, int]] = {
+        name: (0, 1) for name, occurrences in memberships.items() if occurrences > 1
+    }
     for candidate in [table.primary_key, *table.unique]:
         members = [name for name in candidate if name in synthesized]
         for position, name in enumerate(members):

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING
 
 from sqlglot import exp
 
-from dataloom.constraints import parse_check
+from dataloom.constraints import evaluate, parse_check
 from dataloom.engine import ordered_tables
 from dataloom.errors import PlanError
 from dataloom.plan import EntityPlan, Fanout, Plan, Rule
@@ -40,12 +41,19 @@ def _conjuncts(node: exp.Expression) -> Iterator[exp.Expression]:
 
 def _literal(node: exp.Expression) -> Scalar:
     """Read a literal, seeing through the parentheses and casts PostgreSQL adds."""
-    while isinstance(node, (exp.Paren, exp.Cast)):
-        node = node.this
-    if isinstance(node, exp.Boolean):
-        return bool(node.this)
-    if isinstance(node, exp.Literal):
-        return node.this if node.is_string else float(node.this)
+    if isinstance(node, exp.Paren):
+        return _literal(node.this)
+    if isinstance(node, exp.Neg):
+        value = _literal(node.this)
+        return -value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+    if isinstance(node, exp.Cast):
+        if any(isinstance(child, exp.Column) for child in node.walk()):
+            return None
+        value = evaluate(node, {})
+        return value if isinstance(value, (str, int, float, bool)) else None
+    if isinstance(node, (exp.Boolean, exp.Literal)):
+        value = evaluate(node, {})
+        return value if isinstance(value, (str, int, float, bool)) else None
     return None
 
 
@@ -106,19 +114,30 @@ def _rules_from_checks(table: Table, eligible: set[str]) -> dict[str, Rule]:
             strict = isinstance(term, (exp.GT, exp.LT))
             if strict and not integral:
                 continue
-            step = 1 if strict else 0
             limits = bounds.setdefault(name, {})
             if isinstance(term, (exp.GT, exp.GTE)):
-                limits["minimum"] = max(limits.get("minimum", -1e12), float(edge) + step)
+                lower_edge = math.floor(edge) + 1 if strict else float(edge)
+                limits["minimum"] = max(limits.get("minimum", -math.inf), lower_edge)
             else:
-                limits["maximum"] = min(limits.get("maximum", 1e12), float(edge) - step)
+                upper_edge = math.ceil(edge) - 1 if strict else float(edge)
+                limits["maximum"] = min(limits.get("maximum", math.inf), upper_edge)
     rules = {name: Rule(choices=values) for name, values in choices.items()}
     for name, limits in bounds.items():
-        if name in rules or limits.get("minimum", 0) > limits.get("maximum", 1e12):
+        if name in rules:
             continue
-        rules[name] = Rule(
-            minimum=limits.get("minimum", 0.0), maximum=limits.get("maximum", 1000.0)
-        )
+        lower = limits.get("minimum")
+        upper = limits.get("maximum")
+        if lower is None:
+            lower = min(0.0, upper - 1000.0) if upper is not None else 0.0
+        if upper is None:
+            upper = max(1000.0, lower + 1000.0)
+        kind = column_type(_sql_type(table, name))
+        if kind.family == "integer":
+            lower = max(math.ceil(lower), -(2 ** (kind.bits - 1)))
+            upper = min(math.floor(upper), 2 ** (kind.bits - 1) - 1)
+        if lower > upper:
+            raise PlanError(f"No supported values satisfy CHECK bounds for {table.name}.{name}")
+        rules[name] = Rule(minimum=lower, maximum=upper)
     return rules
 
 

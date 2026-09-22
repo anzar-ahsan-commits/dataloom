@@ -174,3 +174,18 @@ FK-field references, timestamps, export/replay, and SQLite insertion constraints
 environment. Its 100 fictional fulfillments have balancing totals, policy-based
 discounts, shipping 1–7 days after creation, and identical replay. See
 [the example plan](../examples/business_rules.yaml) and [rule reference](plans.md#derived-fields).
+
+
+## Independent review corrections - 0.1.0.dev4
+
+Reviewed the schema-only generation and MCP 2.x commits. The initial local suite
+passed 113 tests with two PostgreSQL tests skipped, but additional edge-case
+reproductions exposed range synthesis, overlapping-key, cast, and classification
+bugs. Seventeen new cases failed before the implementation fixes; additional
+boundary and live-database comparisons were then added.
+
+After correction, all 140 tests passed against the existing disposable PostgreSQL
+16 container, including six direct comparisons between the CHECK evaluator and
+PostgreSQL. Combined statement/branch coverage was 88%. Ruff and strict mypy
+passed. Numeric/Boolean column casts remain explicitly unsupported; the engine
+must not guess at source-type-specific conversion behavior.

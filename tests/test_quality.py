@@ -87,3 +87,15 @@ def test_length_violations_are_explained_not_just_rejected() -> None:
     plan = Plan(entities={"t": EntityPlan(rows=1, rules={"code": Rule(choices=["toolong"])})})
     with pytest.raises(GenerationError, match="over VARCHAR\\(2\\)"):
         generate(genome, plan)
+
+
+@pytest.mark.parametrize(
+    "keys",
+    ["PRIMARY KEY(a,b), UNIQUE(a)", "PRIMARY KEY(a,b), UNIQUE(b,c)"],
+)
+def test_overlapping_candidate_keys_can_generate_distinct_rows(keys: str) -> None:
+    genome = parse_ddl(f"CREATE TABLE t(a INT, b INT, c INT, {keys})")
+    plan = Plan(entities={"t": EntityPlan(rows=20)})
+    data, receipt = generate(genome, plan)
+    assert len(data["t"]) == 20
+    assert generate(genome, plan) == (data, receipt)

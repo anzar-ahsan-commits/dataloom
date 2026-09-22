@@ -3,6 +3,24 @@
 This project is in alpha. Entries describe implemented source changes, not a
 promise of a published package or compatibility beyond the documented scope.
 
+## 0.1.0.dev4
+
+- Fixed automatic plans for negative, high, and fractional integer CHECK bounds;
+  impossible integer intervals now report the affected table and column.
+- Fixed overlapping candidate-key generation so a composite primary key plus a
+  narrower UNIQUE constraint does not repeat deterministic values.
+- Limited built-in string-semantic heuristics to text columns, preserving numeric
+  identifiers such as `company_id`; classifier cache/provenance now uses version 3.
+- Corrected Boolean literal casts, integer rounding/range checks, and integer
+  literal precision in CHECK evaluation. Numeric/Boolean casts of column-dependent
+  expressions now fail explicitly because their source-type semantics are not
+  modeled. Added comparisons against live PostgreSQL for supported cast behavior.
+- Added 25 regression cases. Validation: 140 tests passed including PostgreSQL 16;
+  88% combined coverage, Ruff, and strict mypy passed on Windows/Python 3.12.
+
+Generated values and classifier artifacts can change for the corrected cases.
+Preserve the earlier engine and artifacts when replaying earlier receipts.
+
 ## 0.1.0.dev3
 
 **Breaking:** the MCP extra now requires mcp 2.2 or newer. The official SDK renamed
