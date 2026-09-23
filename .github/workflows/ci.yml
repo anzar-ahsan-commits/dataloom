@@ -20,6 +20,7 @@ jobs:
       - run: python -m ruff format --check src tests examples
       - run: python -m mypy src/dataloom
       - run: python -m pytest --cov=dataloom --cov-report=term-missing
+      - run: python examples/run_pilots.py
       - run: python -m build
       - run: python -m twine check dist/*
   postgres:

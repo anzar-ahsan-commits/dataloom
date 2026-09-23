@@ -283,3 +283,12 @@ are welcome through the documented plugin interfaces.
 
 The development version is installed from this repository. These instructions do
 not assume that a DataLoom package has been published to PyPI.
+
+
+## Cross-domain pilots
+
+Run `python examples/run_pilots.py` after installation to exercise commerce,
+logistics, and support scenarios. Eighteen explicit-plan runs check business rules,
+NULL/proportion quotas, deterministic replay, JSON readback, and SQLite constraints.
+Three schema-only baselines demonstrate which business policies still need a plan.
+See [pilot results, reusable inputs, and limitations](docs/pilots.md).

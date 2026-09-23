@@ -1,0 +1,61 @@
+format_version: 1
+seed: 42
+reference_date: '2025-01-01'
+entities:
+  accounts:
+    rows: 12
+  tickets:
+    fanout:
+      parent: accounts
+      foreign_key:
+      - account_id
+      minimum: 2
+      maximum: 4
+    rules:
+      urgent:
+        proportion: 0.25
+        value: true
+        otherwise: false
+      target_minutes:
+        derive:
+          kind: case
+          source: urgent
+          cases:
+          - operator: eq
+            value: true
+            then: 60
+          otherwise: 240
+      response_minutes:
+        choices:
+        - 15
+        - 90
+        - 360
+      overrun_minutes:
+        derive:
+          kind: arithmetic
+          operation: subtract
+          fields:
+          - response_minutes
+          - target_minutes
+          decimals: 2
+      breached:
+        derive:
+          kind: case
+          source: overrun_minutes
+          cases:
+          - operator: gt
+            value: 0
+            then: true
+          otherwise: false
+      notes:
+        null_rate: 0.1
+  replies:
+    fanout:
+      parent: tickets
+      foreign_key:
+      - ticket_id
+      minimum: 2
+      maximum: 4
+    rules:
+      body:
+        semantic_type: description

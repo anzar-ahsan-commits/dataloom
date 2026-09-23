@@ -1,0 +1,3 @@
+CREATE TABLE warehouses (id INT PRIMARY KEY, city VARCHAR(60) NOT NULL);
+CREATE TABLE shipments (id INT PRIMARY KEY, warehouse_id INT NOT NULL REFERENCES warehouses(id), created_on DATE NOT NULL, dispatched_on DATE NOT NULL, delivered_on DATE NOT NULL, weight_kg INT NOT NULL CHECK(weight_kg BETWEEN 1 AND 30), rate_per_kg NUMERIC(6,2) NOT NULL, shipping_cost NUMERIC(9,2) NOT NULL, instructions TEXT, CHECK(dispatched_on >= created_on), CHECK(delivered_on > dispatched_on));
+CREATE TABLE packages (shipment_id INT NOT NULL REFERENCES shipments(id), package_no INT NOT NULL, fragile BOOLEAN NOT NULL, PRIMARY KEY(shipment_id,package_no));

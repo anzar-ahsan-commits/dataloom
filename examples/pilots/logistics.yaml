@@ -1,0 +1,56 @@
+format_version: 1
+seed: 42
+reference_date: '2025-01-01'
+entities:
+  warehouses:
+    rows: 12
+  shipments:
+    fanout:
+      parent: warehouses
+      foreign_key:
+      - warehouse_id
+      minimum: 2
+      maximum: 4
+    rules:
+      dispatched_on:
+        derive:
+          kind: date_offset
+          source: created_on
+          minimum_days: 0
+          maximum_days: 2
+      delivered_on:
+        derive:
+          kind: date_offset
+          source: dispatched_on
+          minimum_days: 1
+          maximum_days: 5
+      weight_kg:
+        minimum: 1
+        maximum: 30
+      rate_per_kg:
+        choices:
+        - 2.5
+        - 4
+        - 7.5
+      shipping_cost:
+        derive:
+          kind: arithmetic
+          operation: multiply
+          fields:
+          - weight_kg
+          - rate_per_kg
+          decimals: 2
+      instructions:
+        null_rate: 0.1
+  packages:
+    fanout:
+      parent: shipments
+      foreign_key:
+      - shipment_id
+      minimum: 2
+      maximum: 4
+    rules:
+      fragile:
+        proportion: 0.25
+        value: true
+        otherwise: false
